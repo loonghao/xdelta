@@ -5,7 +5,7 @@ vcpkg_download_distfile(
     ARCHIVE
     URLS "https://github.com/loonghao/xdelta/releases/download/v${VERSION}/xdelta-${VERSION}-windows.zip"
     FILENAME "xdelta-${VERSION}-windows.zip"
-    SHA512 "e19f3cca35ccc7cd9b3566027ffa18e6f300bdf8b2dd4a83e0a5559725ae4763538a301696534c1a9467e1cbed31aedba4637c0c07226538ac25579b8a584019"
+    SHA512 "8cbe23fb142c0d99a8abdb96ed6efd328ad7575cd72cc7fe784a3f9abc9e8e5cda39cb9e185049b470537e7af5ec2d7f98830c17071c812605d7aff6fae1dacc"
 )
 
 # Extract the archive
