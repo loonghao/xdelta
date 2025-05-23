@@ -1,0 +1,51 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Create imported target for xdelta library
+if(NOT TARGET xdelta::xdelta)
+    add_library(xdelta::xdelta STATIC IMPORTED)
+    
+    # Get the import prefix
+    get_filename_component(_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
+    get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+    get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+    if(_IMPORT_PREFIX STREQUAL "/")
+        set(_IMPORT_PREFIX "")
+    endif()
+    
+    # Set target properties for release configuration
+    set_target_properties(xdelta::xdelta PROPERTIES
+        IMPORTED_LOCATION "${_IMPORT_PREFIX}/lib/xdelta.lib"
+        INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
+    )
+    
+    # Set debug properties if available
+    if(EXISTS "${_IMPORT_PREFIX}/debug/lib/xdeltad.lib")
+        set_target_properties(xdelta::xdelta PROPERTIES
+            IMPORTED_LOCATION_DEBUG "${_IMPORT_PREFIX}/debug/lib/xdeltad.lib"
+        )
+    endif()
+    
+    # Set additional properties
+    set_target_properties(xdelta::xdelta PROPERTIES
+        INTERFACE_COMPILE_DEFINITIONS "XDELTA_STATIC"
+        IMPORTED_LINK_INTERFACE_LANGUAGES "C"
+    )
+    
+    # Clean up
+    unset(_IMPORT_PREFIX)
+endif()
+
+# Provide legacy variables for compatibility
+set(XDELTA_FOUND TRUE)
+set(xdelta_FOUND TRUE)
+if(TARGET xdelta::xdelta)
+    get_target_property(XDELTA_INCLUDE_DIRS xdelta::xdelta INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(XDELTA_LIBRARIES xdelta::xdelta IMPORTED_LOCATION)
+    if(NOT XDELTA_LIBRARIES)
+        get_target_property(XDELTA_LIBRARIES xdelta::xdelta IMPORTED_LOCATION_RELEASE)
+    endif()
+endif()
+
+check_required_components(xdelta)

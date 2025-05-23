@@ -46,6 +46,24 @@ endif()
 # Handle copyright
 file(INSTALL "${SOURCE_PATH}/${VERSION}/README.md" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
 
+# Generate CMake configuration files
+include(CMakePackageConfigHelpers)
+
+# Configure the config file from template
+configure_package_config_file(
+    "${CMAKE_CURRENT_LIST_DIR}/xdeltaConfig.cmake.in"
+    "${CURRENT_PACKAGES_DIR}/share/${PORT}/xdeltaConfig.cmake"
+    INSTALL_DESTINATION "share/${PORT}"
+    PATH_VARS CMAKE_INSTALL_INCLUDEDIR CMAKE_INSTALL_LIBDIR
+)
+
+# Generate version file
+write_basic_package_version_file(
+    "${CURRENT_PACKAGES_DIR}/share/${PORT}/xdeltaConfigVersion.cmake"
+    VERSION ${VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
 # Configure usage
 configure_file("${CMAKE_CURRENT_LIST_DIR}/usage" "${CURRENT_PACKAGES_DIR}/share/${PORT}/usage" COPYONLY)
 

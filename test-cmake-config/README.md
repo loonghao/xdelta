@@ -1,0 +1,53 @@
+# Xdelta CMake Configuration Test
+
+This directory contains a test project to verify that the xdelta vcpkg package correctly provides CMake configuration files.
+
+## Problem
+
+Previously, the xdelta vcpkg package only installed binary files and libraries but did not generate CMake configuration files. This caused `find_package(xdelta CONFIG REQUIRED)` to fail.
+
+## Solution
+
+The portfile.cmake has been updated to:
+
+1. Generate `xdeltaConfig.cmake` using a proper template
+2. Generate `xdeltaConfigVersion.cmake` for version compatibility
+3. Create the `xdelta::xdelta` imported target with correct properties
+
+## Testing
+
+To test the CMake configuration:
+
+```bash
+# Ensure xdelta is installed via vcpkg
+vcpkg install xdelta
+
+# Configure and build the test
+cd test-cmake-config
+mkdir build
+cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=[path-to-vcpkg]/scripts/buildsystems/vcpkg.cmake
+cmake --build .
+
+# Run the test
+./test_xdelta  # or test_xdelta.exe on Windows
+```
+
+## Expected Output
+
+If the CMake configuration is working correctly, you should see:
+
+```
+Testing xdelta CMake configuration...
+✅ xdelta library loaded and initialized successfully!
+✅ CMake configuration is working correctly!
+```
+
+## CMake Usage
+
+After this fix, users can use xdelta in their CMake projects like this:
+
+```cmake
+find_package(xdelta CONFIG REQUIRED)
+target_link_libraries(your_target PRIVATE xdelta::xdelta)
+```
