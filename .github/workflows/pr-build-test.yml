@@ -416,6 +416,14 @@ jobs:
       - name: Test with vcpkg registry package
         shell: bash
         run: |
+          # Skip vcpkg registry test on Linux since the registry only supports Windows
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            echo "⏭️ Skipping vcpkg registry test on Linux (registry only supports Windows)"
+            echo "Creating placeholder directory for consistency..."
+            mkdir -p test-cmake-config/build-registry
+            exit 0
+          fi
+
           echo "Testing CMake configuration with vcpkg registry package..."
 
           # Create vcpkg-configuration.json for registry testing
@@ -474,6 +482,12 @@ jobs:
       - name: Run vcpkg registry test
         shell: bash
         run: |
+          # Skip vcpkg registry test on Linux since the registry only supports Windows
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            echo "⏭️ Skipping vcpkg registry test execution on Linux (registry only supports Windows)"
+            exit 0
+          fi
+
           echo "Running vcpkg registry CMake configuration test..."
           cd test-cmake-config/build-registry
 

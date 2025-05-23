@@ -488,6 +488,23 @@ jobs:
         # Copy executables
         cp build/xdelta3 artifacts/linux/
 
+        # Copy library files if they exist
+        echo "Looking for library files..."
+        if [ -f "build/libxdelta.a" ]; then
+          cp build/libxdelta.a artifacts/linux/
+          echo "✅ Copied libxdelta.a"
+        else
+          echo "⚠️ libxdelta.a not found at: build/libxdelta.a"
+        fi
+
+        # Look for library files in other possible locations
+        find build -name "*.a" -type f | while read lib_file; do
+          if [[ "$lib_file" == *"xdelta"* ]]; then
+            cp "$lib_file" artifacts/linux/
+            echo "✅ Copied library: $(basename $lib_file)"
+          fi
+        done
+
         # Create README manually to avoid script dependencies
         echo "Creating README.txt manually..."
 

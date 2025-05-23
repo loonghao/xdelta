@@ -5,7 +5,7 @@ include(CMakeFindDependencyMacro)
 # Create imported target for xdelta library
 if(NOT TARGET xdelta::xdelta)
     add_library(xdelta::xdelta STATIC IMPORTED)
-    
+
     # Get the import prefix
     get_filename_component(_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
     get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
@@ -13,26 +13,39 @@ if(NOT TARGET xdelta::xdelta)
     if(_IMPORT_PREFIX STREQUAL "/")
         set(_IMPORT_PREFIX "")
     endif()
-    
+
+    # Determine library extension based on platform
+    if(WIN32)
+        set(_LIB_SUFFIX ".lib")
+        set(_DEBUG_SUFFIX "d.lib")
+    else()
+        set(_LIB_SUFFIX ".a")
+        set(_DEBUG_SUFFIX "d.a")
+    endif()
+
     # Set target properties for release configuration
     set_target_properties(xdelta::xdelta PROPERTIES
-        IMPORTED_LOCATION "${_IMPORT_PREFIX}/lib/xdelta.lib"
+        IMPORTED_LOCATION "${_IMPORT_PREFIX}/lib/xdelta${_LIB_SUFFIX}"
         INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
     )
-    
+
     # Set debug properties if available
-    if(EXISTS "${_IMPORT_PREFIX}/debug/lib/xdeltad.lib")
+    if(EXISTS "${_IMPORT_PREFIX}/debug/lib/xdelta${_DEBUG_SUFFIX}")
         set_target_properties(xdelta::xdelta PROPERTIES
-            IMPORTED_LOCATION_DEBUG "${_IMPORT_PREFIX}/debug/lib/xdeltad.lib"
+            IMPORTED_LOCATION_DEBUG "${_IMPORT_PREFIX}/debug/lib/xdelta${_DEBUG_SUFFIX}"
         )
     endif()
-    
+
+    # Clean up variables
+    unset(_LIB_SUFFIX)
+    unset(_DEBUG_SUFFIX)
+
     # Set additional properties
     set_target_properties(xdelta::xdelta PROPERTIES
         INTERFACE_COMPILE_DEFINITIONS "XDELTA_STATIC"
         IMPORTED_LINK_INTERFACE_LANGUAGES "C"
     )
-    
+
     # Clean up
     unset(_IMPORT_PREFIX)
 endif()
