@@ -533,14 +533,14 @@ jobs:
           EOF
 
           # Create a minimal vcpkg.json for the test
-          cat > test-vcpkg.json << EOF
+          cat > vcpkg.json << EOF
           {
             "dependencies": [ "xdelta" ]
           }
           EOF
 
-          # Install xdelta from the local registry
-          vcpkg install --triplet=${{ matrix.triplet }} --manifest-root=. --x-manifest-file=test-vcpkg.json
+          # Install xdelta from the local registry using manifest mode
+          vcpkg install --triplet=${{ matrix.triplet }}
 
           # Test the CMake configuration
           mkdir -p test-cmake-config/build-registry
