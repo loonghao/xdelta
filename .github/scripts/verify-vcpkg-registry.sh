@@ -71,26 +71,33 @@ fi
 VERIFICATION_FAILED=0
 
 # Verify portfile.cmake
-echo "Checking portfile.cmake SHA512..."
-PORTFILE_CONTENT=$(cat "$PORTFILE_PATH")
-echo "portfile.cmake content (excerpt):"
-grep -n "SHA512" "$PORTFILE_PATH" || echo "SHA512 not found in portfile.cmake"
+echo "Checking portfile.cmake..."
 
-# Try different patterns to extract SHA512
-PORTFILE_SHA512=$(grep -oP 'SHA512 "\K[a-f0-9]+(?=")' "$PORTFILE_PATH" || echo "")
-if [[ -z "$PORTFILE_SHA512" ]]; then
-  # Try alternative pattern
-  PORTFILE_SHA512=$(grep -o 'SHA512 "[a-f0-9]*"' "$PORTFILE_PATH" | grep -o '"[a-f0-9]*"' | tr -d '"' || echo "")
-fi
-
-if [[ "$PORTFILE_SHA512" == "$SHA512" ]]; then
-  echo "✅ portfile.cmake SHA512 is correct"
+# Check if portfile uses vcpkg_from_git (no SHA512 needed)
+if grep -q "vcpkg_from_git" "$PORTFILE_PATH"; then
+  echo "✅ portfile.cmake uses vcpkg_from_git (no SHA512 verification needed)"
 else
-  echo "❌ portfile.cmake SHA512 is incorrect"
-  echo "  Expected: $SHA512"
-  echo "  Found:    $PORTFILE_SHA512"
-  # Don't exit immediately, continue checking other files
-  VERIFICATION_FAILED=1
+  echo "Checking portfile.cmake SHA512..."
+  PORTFILE_CONTENT=$(cat "$PORTFILE_PATH")
+  echo "portfile.cmake content (excerpt):"
+  grep -n "SHA512" "$PORTFILE_PATH" || echo "SHA512 not found in portfile.cmake"
+
+  # Try different patterns to extract SHA512
+  PORTFILE_SHA512=$(grep -oP 'SHA512 "\K[a-f0-9]+(?=")' "$PORTFILE_PATH" || echo "")
+  if [[ -z "$PORTFILE_SHA512" ]]; then
+    # Try alternative pattern
+    PORTFILE_SHA512=$(grep -o 'SHA512 "[a-f0-9]*"' "$PORTFILE_PATH" | grep -o '"[a-f0-9]*"' | tr -d '"' || echo "")
+  fi
+
+  if [[ "$PORTFILE_SHA512" == "$SHA512" ]]; then
+    echo "✅ portfile.cmake SHA512 is correct"
+  else
+    echo "❌ portfile.cmake SHA512 is incorrect"
+    echo "  Expected: $SHA512"
+    echo "  Found:    $PORTFILE_SHA512"
+    # Don't exit immediately, continue checking other files
+    VERIFICATION_FAILED=1
+  fi
 fi
 
 # Verify vcpkg.json

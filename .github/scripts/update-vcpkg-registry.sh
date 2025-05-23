@@ -75,16 +75,26 @@ if [[ ! -f "$BASELINE_JSON_PATH" ]]; then
   exit 1
 fi
 
-# Update portfile.cmake
+# Update portfile.cmake (skip SHA512 update for vcpkg_from_git)
 if [[ "$DRY_RUN" == "false" ]]; then
   echo "Updating $PORTFILE_PATH..."
-  sed -i 's|SHA512 "to-be-filled-after-release"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
-  sed -i 's|SHA512 "将在发布后填写实际的哈希值"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
-  sed -i 's|SHA512 "[a-f0-9]\{128\}"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
-  sed -i 's|SHA512 "[a-f0-9]*"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
-  echo "✅ Updated SHA512 in portfile.cmake"
+  # Check if portfile uses vcpkg_from_git (no SHA512 needed)
+  if grep -q "vcpkg_from_git" "$PORTFILE_PATH"; then
+    echo "✅ portfile.cmake uses vcpkg_from_git (no SHA512 update needed)"
+  else
+    # Only update SHA512 if using vcpkg_download_distfile
+    sed -i 's|SHA512 "to-be-filled-after-release"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+    sed -i 's|SHA512 "将在发布后填写实际的哈希值"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+    sed -i 's|SHA512 "[a-f0-9]\{128\}"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+    sed -i 's|SHA512 "[a-f0-9]*"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+    echo "✅ Updated SHA512 in portfile.cmake"
+  fi
 else
-  echo "[DRY RUN] Would update SHA512 in $PORTFILE_PATH to: $SHA512"
+  if grep -q "vcpkg_from_git" "$PORTFILE_PATH"; then
+    echo "[DRY RUN] portfile.cmake uses vcpkg_from_git (no SHA512 update needed)"
+  else
+    echo "[DRY RUN] Would update SHA512 in $PORTFILE_PATH to: $SHA512"
+  fi
 fi
 
 # Update vcpkg.json
