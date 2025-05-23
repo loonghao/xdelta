@@ -9,8 +9,11 @@ on:
       - 'CMakeLists.txt'
       - 'vcpkg.json'
       - 'xdelta3/**'
+      - 'vcpkg-registry/**'
+      - 'test-cmake-config/**'
       - '.github/workflows/reusable-build.yml'
       - '.github/workflows/release.yml'
+      - '.github/workflows/pr-build-test.yml'
   workflow_dispatch:
 
 jobs:
@@ -342,6 +345,146 @@ jobs:
             Write-Host "❌ Package structure is invalid"
             exit 1
           }
+
+  test-cmake-config:
+    name: Test CMake Configuration
+    runs-on: ${{ matrix.os }}
+    needs: [test-package]
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            triplet: x64-windows
+            cmake_arch: -A x64
+          - os: ubuntu-latest
+            triplet: x64-linux
+            cmake_arch: ""
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup vcpkg
+        uses: johnwason/vcpkg-action@v6
+        id: vcpkg
+        with:
+          manifest-dir: ${{ github.workspace }}
+          triplet: ${{ matrix.triplet }}
+          revision: a34c873a9717a888f58dc05268dea15592c2f0ff
+          token: ${{ github.token }}
+          github-binarycache: true
+          cache-key: vcpkg-cmake-test-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
+        continue-on-error: true
+
+      - name: Test with built-from-source package
+        shell: bash
+        run: |
+          echo "Testing CMake configuration with built-from-source package..."
+
+          # Configure and build the main project first
+          cmake -B build -S . ${{ matrix.cmake_arch }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            -DXDELTA_ENABLE_LZMA=ON \
+            -DXDELTA_BUILD_TESTS=OFF
+
+          cmake --build build --config Release --parallel 2
+
+          # Install to a local directory for testing
+          cmake --install build --prefix install-test
+
+          # Test the CMake configuration
+          mkdir -p test-cmake-config/build-source
+          cd test-cmake-config/build-source
+
+          # Configure the test project
+          cmake .. ${{ matrix.cmake_arch }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install-test"
+
+          # Build the test project
+          cmake --build . --config Release
+
+          echo "✅ Built-from-source CMake configuration test successful"
+
+      - name: Test with vcpkg registry package
+        shell: bash
+        run: |
+          echo "Testing CMake configuration with vcpkg registry package..."
+
+          # Create vcpkg-configuration.json for registry testing
+          cat > vcpkg-configuration.json << EOF
+          {
+            "registries": [
+              {
+                "kind": "filesystem",
+                "path": "./vcpkg-registry",
+                "packages": [ "xdelta" ]
+              }
+            ]
+          }
+          EOF
+
+          # Create a minimal vcpkg.json for the test
+          cat > test-vcpkg.json << EOF
+          {
+            "dependencies": [ "xdelta" ]
+          }
+          EOF
+
+          # Install xdelta from the local registry
+          vcpkg install --triplet=${{ matrix.triplet }} --manifest-root=. --x-manifest-file=test-vcpkg.json
+
+          # Test the CMake configuration
+          mkdir -p test-cmake-config/build-registry
+          cd test-cmake-config/build-registry
+
+          # Configure the test project
+          cmake .. ${{ matrix.cmake_arch }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+
+          # Build the test project
+          cmake --build . --config Release
+
+          echo "✅ vcpkg registry CMake configuration test successful"
+
+      - name: Run built-from-source test
+        shell: bash
+        run: |
+          echo "Running built-from-source CMake configuration test..."
+          cd test-cmake-config/build-source
+
+          # Run the test executable
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ./Release/test_xdelta.exe
+          else
+            ./test_xdelta
+          fi
+
+          echo "✅ Built-from-source test completed successfully"
+
+      - name: Run vcpkg registry test
+        shell: bash
+        run: |
+          echo "Running vcpkg registry CMake configuration test..."
+          cd test-cmake-config/build-registry
+
+          # Run the test executable
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ./Release/test_xdelta.exe
+          else
+            ./test_xdelta
+          fi
+
+          echo "✅ vcpkg registry test completed successfully"
 
   test-vcpkg-integration:
     name: Test vcpkg Integration
