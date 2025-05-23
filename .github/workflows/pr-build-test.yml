@@ -540,7 +540,8 @@ jobs:
           EOF
 
           # Install xdelta from the local registry using manifest mode
-          vcpkg install --triplet=${{ matrix.triplet }}
+          echo "Installing xdelta package from local registry..."
+          vcpkg install --triplet=${{ matrix.triplet }} --debug
 
           # Test the CMake configuration
           mkdir -p test-cmake-config/build-registry
