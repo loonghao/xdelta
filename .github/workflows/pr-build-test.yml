@@ -521,6 +521,7 @@ jobs:
           # Create vcpkg-configuration.json for registry testing
           cat > vcpkg-configuration.json << EOF
           {
+            "default-registry": null,
             "registries": [
               {
                 "kind": "filesystem",
