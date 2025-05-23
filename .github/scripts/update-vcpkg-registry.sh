@@ -75,15 +75,12 @@ if [[ ! -f "$BASELINE_JSON_PATH" ]]; then
   exit 1
 fi
 
-# Get current git commit hash for git-tree
-GIT_TREE=$(git rev-parse HEAD)
-echo "Current git-tree: $GIT_TREE"
-
 # Update portfile.cmake
 if [[ "$DRY_RUN" == "false" ]]; then
   echo "Updating $PORTFILE_PATH..."
   sed -i 's|SHA512 "to-be-filled-after-release"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
   sed -i 's|SHA512 "将在发布后填写实际的哈希值"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+  sed -i 's|SHA512 "[a-f0-9]\{128\}"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
   sed -i 's|SHA512 "[a-f0-9]*"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
   echo "✅ Updated SHA512 in portfile.cmake"
 else
@@ -99,15 +96,13 @@ else
   echo "[DRY RUN] Would update version in $VCPKG_JSON_PATH to: $VERSION"
 fi
 
-# Update versions/x-/xdelta.json
+# Update versions/x-/xdelta.json (version only, git-tree will be updated later)
 if [[ "$DRY_RUN" == "false" ]]; then
   echo "Updating $VERSION_JSON_PATH..."
   sed -i 's|"version": "[0-9.]*"|"version": "'"$VERSION"'"|g' "$VERSION_JSON_PATH"
-  sed -i 's|"git-tree": "[a-f0-9]*"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
-  echo "✅ Updated version and git-tree in xdelta.json"
+  echo "✅ Updated version in xdelta.json"
 else
   echo "[DRY RUN] Would update version in $VERSION_JSON_PATH to: $VERSION"
-  echo "[DRY RUN] Would update git-tree in $VERSION_JSON_PATH to: $GIT_TREE"
 fi
 
 # Update baseline.json
@@ -117,6 +112,28 @@ if [[ "$DRY_RUN" == "false" ]]; then
   echo "✅ Updated baseline in baseline.json"
 else
   echo "[DRY RUN] Would update baseline in $BASELINE_JSON_PATH to: $VERSION"
+fi
+
+# Calculate git-tree after all file updates
+if [[ "$DRY_RUN" == "false" ]]; then
+  echo "Calculating git-tree after file updates..."
+
+  # Stage the changes to get the correct git-tree
+  git add vcpkg-registry/
+
+  # Get the git-tree hash for the vcpkg-registry directory
+  GIT_TREE=$(git write-tree --prefix=vcpkg-registry/)
+  echo "Git-tree hash: $GIT_TREE"
+
+  # Update git-tree in versions/x-/xdelta.json
+  echo "Updating git-tree in $VERSION_JSON_PATH..."
+  sed -i 's|"git-tree": "to-be-filled-after-release"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
+  sed -i 's|"git-tree": "placeholder"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
+  sed -i 's|"git-tree": "[a-f0-9]\{40\}"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
+  sed -i 's|"git-tree": "[a-f0-9]*"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
+  echo "✅ Updated git-tree in xdelta.json"
+else
+  echo "[DRY RUN] Would calculate and update git-tree after file changes"
 fi
 
 echo "Registry update complete!"

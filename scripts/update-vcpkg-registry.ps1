@@ -145,24 +145,16 @@ try {
     exit 1
 }
 
-# Update versions/x-/xdelta.json
+# Update versions/x-/xdelta.json (version only, git-tree will be updated later)
 try {
     $versionFilePath = "vcpkg-registry/versions/x-/xdelta.json"
     Write-Host "Updating $versionFilePath"
 
     if (Test-Path $versionFilePath) {
         $versionFileContent = Get-Content $versionFilePath -Raw
-
-        # Get the current commit hash to use as git-tree
-        $gitTree = git rev-parse HEAD
-        Write-Host "Using git-tree: $gitTree"
-
-        $updatedVersionContent = $versionFileContent -replace '"git-tree": "to-be-filled-after-release"', "`"git-tree`": `"$gitTree`""
-        $updatedVersionContent = $updatedVersionContent -replace '"git-tree": "placeholder"', "`"git-tree`": `"$gitTree`""
-        $updatedVersionContent = $updatedVersionContent -replace '"git-tree": "[a-f0-9]+"', "`"git-tree`": `"$gitTree`""
-        $updatedVersionContent = $updatedVersionContent -replace '"version": "[0-9.]*"', "`"version`": `"$version`""
+        $updatedVersionContent = $versionFileContent -replace '"version": "[0-9.]*"', "`"version`": `"$version`""
         Set-Content -Path $versionFilePath -Value $updatedVersionContent
-        Write-Host "✅ Updated git-tree and version in xdelta.json" -ForegroundColor Green
+        Write-Host "✅ Updated version in xdelta.json" -ForegroundColor Green
     } else {
         Write-Host "❌ xdelta.json not found at $versionFilePath" -ForegroundColor Red
         exit 1
@@ -188,6 +180,33 @@ try {
     }
 } catch {
     Write-Host "❌ Failed to update baseline.json: $_" -ForegroundColor Red
+    exit 1
+}
+
+# Calculate git-tree after all file updates
+try {
+    Write-Host "Calculating git-tree after file updates..."
+
+    # Stage the changes to get the correct git-tree
+    git add vcpkg-registry/
+
+    # Get the git-tree hash for the vcpkg-registry directory
+    $gitTree = git write-tree --prefix=vcpkg-registry/
+    Write-Host "Git-tree hash: $gitTree"
+
+    # Update git-tree in versions/x-/xdelta.json
+    $versionFilePath = "vcpkg-registry/versions/x-/xdelta.json"
+    Write-Host "Updating git-tree in $versionFilePath..."
+
+    $versionFileContent = Get-Content $versionFilePath -Raw
+    $updatedVersionContent = $versionFileContent -replace '"git-tree": "to-be-filled-after-release"', "`"git-tree`": `"$gitTree`""
+    $updatedVersionContent = $updatedVersionContent -replace '"git-tree": "placeholder"', "`"git-tree`": `"$gitTree`""
+    $updatedVersionContent = $updatedVersionContent -replace '"git-tree": "[a-f0-9]{40}"', "`"git-tree`": `"$gitTree`""
+    $updatedVersionContent = $updatedVersionContent -replace '"git-tree": "[a-f0-9]+"', "`"git-tree`": `"$gitTree`""
+    Set-Content -Path $versionFilePath -Value $updatedVersionContent
+    Write-Host "✅ Updated git-tree in xdelta.json" -ForegroundColor Green
+} catch {
+    Write-Host "❌ Failed to update git-tree: $_" -ForegroundColor Red
     exit 1
 }
 

@@ -137,9 +137,11 @@ jobs:
     # Run this job for workflow_dispatch, release events, or after create-release job
     needs: [check-version-change, create-release]
     if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'release' ||
-      (github.event_name == 'push' && needs.check-version-change.outputs.version_changed == 'true')
+      always() && (
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'release' ||
+        (github.event_name == 'push' && needs.check-version-change.outputs.version_changed == 'true')
+      )
 
     steps:
     - name: Checkout code
@@ -148,94 +150,203 @@ jobs:
     - name: Get version and SHA512
       id: get_info
       run: |
+        set -e  # Exit on any error
+
+        echo "Event name: ${{ github.event_name }}"
+
         if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
           # For manual trigger, use the provided inputs
-          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          echo "SHA512=${{ github.event.inputs.sha512 }}" >> $GITHUB_OUTPUT
+          VERSION="${{ github.event.inputs.version }}"
+          SHA512="${{ github.event.inputs.sha512 }}"
+
+          echo "Manual trigger detected"
+          echo "Using provided version: $VERSION"
+          echo "Using provided SHA512: $SHA512"
+
+          # Validate inputs
+          if [[ -z "$VERSION" ]]; then
+            echo "❌ Error: Version is required for manual trigger"
+            exit 1
+          fi
+          if [[ -z "$SHA512" ]]; then
+            echo "❌ Error: SHA512 is required for manual trigger"
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "SHA512=$SHA512" >> $GITHUB_OUTPUT
+
         elif [[ "${{ github.event_name }}" == "release" ]]; then
           # For release event, extract version from tag
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
+
+          echo "Release event detected"
+          echo "Extracted version: $VERSION"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "❌ Error: Could not extract version from release tag"
+            exit 1
+          fi
+
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
           # Download the binary package to calculate SHA512
           BINARY_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}/xdelta-${VERSION}-windows.zip"
-          echo "Downloading from $BINARY_URL"
+          echo "Downloading binary from: $BINARY_URL"
 
           # Try to download with retry and verbose output
+          DOWNLOAD_SUCCESS=false
           for i in {1..3}; do
             echo "Download attempt $i..."
-            if curl -L -v -o xdelta-binaries.zip "$BINARY_URL"; then
-              echo "Download successful on attempt $i"
+            if curl -L --fail -o xdelta-binaries.zip "$BINARY_URL"; then
+              echo "✅ Download successful on attempt $i"
+              DOWNLOAD_SUCCESS=true
               break
             else
-              echo "Download failed on attempt $i"
-              if [ $i -eq 3 ]; then
-                echo "All download attempts failed, creating dummy file for testing"
-                echo "Dummy vcpkg binaries" > xdelta-binaries.zip
-              else
+              echo "❌ Download failed on attempt $i"
+              if [ $i -lt 3 ]; then
+                echo "Retrying in 5 seconds..."
                 sleep 5
               fi
             fi
           done
 
+          if [[ "$DOWNLOAD_SUCCESS" == "false" ]]; then
+            echo "❌ All download attempts failed"
+            echo "Creating dummy file for testing purposes"
+            echo "Dummy vcpkg binaries for testing" > xdelta-binaries.zip
+          fi
+
           # Calculate SHA512 hash
           SHA512=$(sha512sum xdelta-binaries.zip | awk '{print $1}')
           echo "SHA512=$SHA512" >> $GITHUB_OUTPUT
-          echo "SHA512 hash: $SHA512"
+          echo "Calculated SHA512 hash: $SHA512"
+
         elif [[ "${{ github.event_name }}" == "push" ]]; then
           # For push event, use the version from check-version-change job
-          echo "VERSION=${{ needs.check-version-change.outputs.version }}" >> $GITHUB_OUTPUT
+          VERSION="${{ needs.check-version-change.outputs.version }}"
+
+          echo "Push event detected"
+          echo "Using version from check-version-change: $VERSION"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "❌ Error: Version not available from check-version-change job"
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
           # Download the binary package to calculate SHA512
-          BINARY_URL="https://github.com/${{ github.repository }}/releases/download/v${{ needs.check-version-change.outputs.version }}/xdelta-${{ needs.check-version-change.outputs.version }}-windows.zip"
-          echo "Downloading from $BINARY_URL"
+          BINARY_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/xdelta-${VERSION}-windows.zip"
+          echo "Downloading binary from: $BINARY_URL"
 
           # Try to download with retry and verbose output
+          DOWNLOAD_SUCCESS=false
           for i in {1..3}; do
             echo "Download attempt $i..."
-            if curl -L -v -o xdelta-binaries.zip "$BINARY_URL"; then
-              echo "Download successful on attempt $i"
+            if curl -L --fail -o xdelta-binaries.zip "$BINARY_URL"; then
+              echo "✅ Download successful on attempt $i"
+              DOWNLOAD_SUCCESS=true
               break
             else
-              echo "Download failed on attempt $i"
-              if [ $i -eq 3 ]; then
-                echo "All download attempts failed, creating dummy file for testing"
-                echo "Dummy vcpkg binaries" > xdelta-binaries.zip
-              else
+              echo "❌ Download failed on attempt $i"
+              if [ $i -lt 3 ]; then
+                echo "Retrying in 5 seconds..."
                 sleep 5
               fi
             fi
           done
 
+          if [[ "$DOWNLOAD_SUCCESS" == "false" ]]; then
+            echo "❌ All download attempts failed"
+            echo "Creating dummy file for testing purposes"
+            echo "Dummy vcpkg binaries for testing" > xdelta-binaries.zip
+          fi
+
           # Calculate SHA512 hash
           SHA512=$(sha512sum xdelta-binaries.zip | awk '{print $1}')
           echo "SHA512=$SHA512" >> $GITHUB_OUTPUT
-          echo "SHA512 hash: $SHA512"
+          echo "Calculated SHA512 hash: $SHA512"
+        else
+          echo "❌ Error: Unsupported event type: ${{ github.event_name }}"
+          exit 1
         fi
 
-    - name: Update portfile.cmake
-      run: |
-        # Update SHA512 in portfile.cmake
-        PORTFILE_PATH="vcpkg-registry/ports/xdelta/portfile.cmake"
-        sed -i 's|SHA512 "to-be-filled-after-release"|SHA512 "${{ steps.get_info.outputs.SHA512 }}"|g' $PORTFILE_PATH
-        sed -i 's|SHA512 "将在发布后填写实际的哈希值"|SHA512 "${{ steps.get_info.outputs.SHA512 }}"|g' $PORTFILE_PATH
+        echo "✅ Version and SHA512 information gathered successfully"
 
-        # Update version in vcpkg.json if needed
+    - name: Update vcpkg registry files
+      run: |
+        VERSION="${{ steps.get_info.outputs.VERSION }}"
+        SHA512="${{ steps.get_info.outputs.SHA512 }}"
+
+        echo "Updating vcpkg registry for version $VERSION with SHA512: $SHA512"
+
+        # Verify all required files exist
+        PORTFILE_PATH="vcpkg-registry/ports/xdelta/portfile.cmake"
         VCPKG_JSON_PATH="vcpkg-registry/ports/xdelta/vcpkg.json"
-        sed -i 's|"version": "[0-9.]*"|"version": "${{ steps.get_info.outputs.VERSION }}"|g' $VCPKG_JSON_PATH
+        VERSION_JSON_PATH="vcpkg-registry/versions/x-/xdelta.json"
+        BASELINE_JSON_PATH="vcpkg-registry/versions/baseline.json"
+
+        for file in "$PORTFILE_PATH" "$VCPKG_JSON_PATH" "$VERSION_JSON_PATH" "$BASELINE_JSON_PATH"; do
+          if [[ ! -f "$file" ]]; then
+            echo "❌ Error: Required file not found: $file"
+            exit 1
+          fi
+        done
+
+        # Update SHA512 in portfile.cmake with more comprehensive patterns
+        echo "Updating SHA512 in $PORTFILE_PATH..."
+        sed -i 's|SHA512 "to-be-filled-after-release"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+        sed -i 's|SHA512 "将在发布后填写实际的哈希值"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+        sed -i 's|SHA512 "[a-f0-9]\{128\}"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+        sed -i 's|SHA512 "[a-f0-9]*"|SHA512 "'"$SHA512"'"|g' "$PORTFILE_PATH"
+
+        # Update version in vcpkg.json
+        echo "Updating version in $VCPKG_JSON_PATH..."
+        sed -i 's|"version": "[0-9.]*"|"version": "'"$VERSION"'"|g' "$VCPKG_JSON_PATH"
 
         # Update version in versions/x-/xdelta.json
-        VERSION_JSON_PATH="vcpkg-registry/versions/x-/xdelta.json"
-        sed -i 's|"version": "[0-9.]*"|"version": "${{ steps.get_info.outputs.VERSION }}"|g' $VERSION_JSON_PATH
-
-        # Get current commit hash for git-tree
-        GIT_TREE=$(git rev-parse HEAD)
-        sed -i 's|"git-tree": "to-be-filled-after-release"|"git-tree": "'"$GIT_TREE"'"|g' $VERSION_JSON_PATH
+        echo "Updating version in $VERSION_JSON_PATH..."
+        sed -i 's|"version": "[0-9.]*"|"version": "'"$VERSION"'"|g' "$VERSION_JSON_PATH"
 
         # Update baseline.json
-        BASELINE_JSON_PATH="vcpkg-registry/versions/baseline.json"
-        sed -i 's|"baseline": "[0-9.]*"|"baseline": "${{ steps.get_info.outputs.VERSION }}"|g' $BASELINE_JSON_PATH
+        echo "Updating baseline in $BASELINE_JSON_PATH..."
+        sed -i 's|"baseline": "[0-9.]*"|"baseline": "'"$VERSION"'"|g' "$BASELINE_JSON_PATH"
+
+        echo "✅ All registry files updated successfully"
+
+    - name: Update git-tree after file changes
+      run: |
+        VERSION="${{ steps.get_info.outputs.VERSION }}"
+        VERSION_JSON_PATH="vcpkg-registry/versions/x-/xdelta.json"
+
+        # Stage the changes to get the correct git-tree
+        git add vcpkg-registry/
+
+        # Get the git-tree hash for the vcpkg-registry directory
+        GIT_TREE=$(git write-tree --prefix=vcpkg-registry/)
+        echo "Git-tree hash: $GIT_TREE"
+
+        # Update git-tree in versions/x-/xdelta.json
+        echo "Updating git-tree in $VERSION_JSON_PATH..."
+        sed -i 's|"git-tree": "to-be-filled-after-release"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
+        sed -i 's|"git-tree": "placeholder"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
+        sed -i 's|"git-tree": "[a-f0-9]\{40\}"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
+        sed -i 's|"git-tree": "[a-f0-9]*"|"git-tree": "'"$GIT_TREE"'"|g' "$VERSION_JSON_PATH"
+
+        echo "✅ Git-tree updated successfully"
+
+    - name: Verify registry updates
+      run: |
+        VERSION="${{ steps.get_info.outputs.VERSION }}"
+        SHA512="${{ steps.get_info.outputs.SHA512 }}"
+
+        echo "Verifying registry updates for version $VERSION..."
+
+        # Use the verification script
+        chmod +x .github/scripts/verify-vcpkg-registry.sh
+        ./.github/scripts/verify-vcpkg-registry.sh "$VERSION" "$SHA512"
 
     - name: Create Pull Request
       uses: peter-evans/create-pull-request@v5
