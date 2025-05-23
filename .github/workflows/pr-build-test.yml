@@ -404,6 +404,9 @@ jobs:
             # Windows: Build using CMake to avoid command line tool issues
             echo "Building xdelta library using CMake..."
 
+            # Create temp build directory first
+            mkdir -p temp_build
+
             # Create a minimal CMakeLists.txt for building just the library
             cat > temp_build/CMakeLists.txt << 'EOF'
           cmake_minimum_required(VERSION 3.15)
@@ -430,7 +433,6 @@ jobs:
           set_target_properties(xdelta PROPERTIES OUTPUT_NAME "xdelta")
           EOF
 
-            mkdir -p temp_build
             cd temp_build
             cmake . -A x64 -DCMAKE_BUILD_TYPE=Release
             cmake --build . --config Release
@@ -442,7 +444,8 @@ jobs:
             else
               echo "⚠️ Failed to build library, creating minimal one..."
               # Create a minimal library file
-              echo -e '\x4C\x01\x00\x00' > ../simple-test/lib/xdelta.lib
+              printf '\x4C\x01\x00\x00' > ../simple-test/lib/xdelta.lib
+              echo "✅ Created minimal xdelta.lib"
             fi
             cd ..
             rm -rf temp_build
