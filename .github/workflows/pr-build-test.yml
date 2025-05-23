@@ -518,19 +518,8 @@ jobs:
 
           echo "Testing CMake configuration with vcpkg registry package..."
 
-          # Create vcpkg-configuration.json for registry testing
-          cat > vcpkg-configuration.json << EOF
-          {
-            "default-registry": null,
-            "registries": [
-              {
-                "kind": "filesystem",
-                "path": "./vcpkg-registry",
-                "packages": [ "xdelta" ]
-              }
-            ]
-          }
-          EOF
+          # Copy the registry configuration to the current directory
+          cp vcpkg-registry/vcpkg-configuration.json .
 
           # Create a minimal vcpkg.json for the test
           cat > vcpkg.json << EOF
