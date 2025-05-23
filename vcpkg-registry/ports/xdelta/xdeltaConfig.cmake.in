@@ -1,54 +1,84 @@
 @PACKAGE_INIT@
 
-include(CMakeFindDependencyMacro)
+# Simple configuration that avoids complex dependency issues
+# This is specifically for vcpkg package usage
+
+# Get the import prefix
+get_filename_component(_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
+get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
+if(_IMPORT_PREFIX STREQUAL "/")
+    set(_IMPORT_PREFIX "")
+endif()
+
+# Set library paths based on platform
+if(WIN32)
+    set(_LIB_NAME "xdelta.lib")
+    set(_DEBUG_LIB_NAME "xdeltad.lib")
+else()
+    set(_LIB_NAME "libxdelta.a")
+    set(_DEBUG_LIB_NAME "libxdeltad.a")
+endif()
+
+# Find the actual library file
+set(_LIB_PATH "${_IMPORT_PREFIX}/lib/${_LIB_NAME}")
+if(NOT EXISTS "${_LIB_PATH}")
+    # Try alternative names
+    if(WIN32)
+        set(_ALT_NAMES "xdelta3.lib" "libxdelta.lib")
+    else()
+        set(_ALT_NAMES "libxdelta3.a" "xdelta.a")
+    endif()
+
+    foreach(_ALT_NAME ${_ALT_NAMES})
+        set(_ALT_PATH "${_IMPORT_PREFIX}/lib/${_ALT_NAME}")
+        if(EXISTS "${_ALT_PATH}")
+            set(_LIB_PATH "${_ALT_PATH}")
+            break()
+        endif()
+    endforeach()
+endif()
 
 # Create imported target for xdelta library
 if(NOT TARGET xdelta::xdelta)
     add_library(xdelta::xdelta STATIC IMPORTED)
 
-    # Get the import prefix
-    get_filename_component(_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_FILE}" PATH)
-    get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
-    get_filename_component(_IMPORT_PREFIX "${_IMPORT_PREFIX}" PATH)
-    if(_IMPORT_PREFIX STREQUAL "/")
-        set(_IMPORT_PREFIX "")
-    endif()
-
-    # Determine library extension based on platform
-    if(WIN32)
-        set(_LIB_SUFFIX ".lib")
-        set(_DEBUG_SUFFIX "d.lib")
-    else()
-        set(_LIB_SUFFIX ".a")
-        set(_DEBUG_SUFFIX "d.a")
-    endif()
-
-    # Set target properties for release configuration
+    # Set basic properties
     set_target_properties(xdelta::xdelta PROPERTIES
-        IMPORTED_LOCATION "${_IMPORT_PREFIX}/lib/xdelta${_LIB_SUFFIX}"
+        IMPORTED_LOCATION "${_LIB_PATH}"
         INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
+        INTERFACE_COMPILE_DEFINITIONS "XDELTA_STATIC"
     )
 
     # Set debug properties if available
-    if(EXISTS "${_IMPORT_PREFIX}/debug/lib/xdelta${_DEBUG_SUFFIX}")
+    set(_DEBUG_PATH "${_IMPORT_PREFIX}/debug/lib/${_DEBUG_LIB_NAME}")
+    if(EXISTS "${_DEBUG_PATH}")
         set_target_properties(xdelta::xdelta PROPERTIES
-            IMPORTED_LOCATION_DEBUG "${_IMPORT_PREFIX}/debug/lib/xdelta${_DEBUG_SUFFIX}"
+            IMPORTED_LOCATION_DEBUG "${_DEBUG_PATH}"
         )
     endif()
 
-    # Clean up variables
-    unset(_LIB_SUFFIX)
-    unset(_DEBUG_SUFFIX)
-
-    # Set additional properties
-    set_target_properties(xdelta::xdelta PROPERTIES
-        INTERFACE_COMPILE_DEFINITIONS "XDELTA_STATIC"
-        IMPORTED_LINK_INTERFACE_LANGUAGES "C"
-    )
-
-    # Clean up
-    unset(_IMPORT_PREFIX)
+    # Add system libraries that are commonly needed
+    if(UNIX AND NOT APPLE)
+        # Linux
+        set_target_properties(xdelta::xdelta PROPERTIES
+            INTERFACE_LINK_LIBRARIES "pthread;m"
+        )
+    elseif(APPLE)
+        # macOS
+        set_target_properties(xdelta::xdelta PROPERTIES
+            INTERFACE_LINK_LIBRARIES "pthread"
+        )
+    endif()
 endif()
+
+# Clean up variables
+unset(_IMPORT_PREFIX)
+unset(_LIB_NAME)
+unset(_DEBUG_LIB_NAME)
+unset(_LIB_PATH)
+unset(_DEBUG_PATH)
+unset(_ALT_NAMES)
 
 # Provide legacy variables for compatibility
 set(XDELTA_FOUND TRUE)
