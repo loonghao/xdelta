@@ -235,6 +235,16 @@ jobs:
         $exePath = "build\${{ inputs.build_type }}\xdelta3.exe"
         Copy-Item $exePath -Destination $artifactsDir
 
+        # Copy library files
+        Write-Host "Copying library files..."
+        $libPath = "build\${{ inputs.build_type }}\xdelta.lib"
+        if (Test-Path $libPath) {
+            Copy-Item $libPath -Destination $artifactsDir
+            Write-Host "✅ Copied xdelta.lib"
+        } else {
+            Write-Host "⚠️ xdelta.lib not found at: $libPath"
+        }
+
         # Copy required DLLs from vcpkg
         Write-Host "Copying required DLLs..."
         $vcpkgBinDir = "vcpkg\installed\${{ matrix.arch }}-windows\bin"
@@ -257,6 +267,20 @@ jobs:
             }
         } else {
             Write-Host "⚠️ vcpkg bin directory not found: $vcpkgBinDir"
+        }
+
+        # Copy library files from vcpkg
+        Write-Host "Copying library files from vcpkg..."
+        $vcpkgLibDir = "vcpkg\installed\${{ matrix.arch }}-windows\lib"
+        if (Test-Path $vcpkgLibDir) {
+            Get-ChildItem -Path $vcpkgLibDir -Filter "*.lib" | ForEach-Object {
+                if ($_.Name -match "(lzma|zlib|bzip2)") {
+                    Copy-Item $_.FullName -Destination $artifactsDir
+                    Write-Host "✅ Copied lib: $($_.Name)"
+                }
+            }
+        } else {
+            Write-Host "⚠️ vcpkg lib directory not found: $vcpkgLibDir"
         }
 
         # Create README manually to avoid path issues

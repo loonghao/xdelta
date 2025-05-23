@@ -92,39 +92,86 @@ if (Test-Path "xdelta3/xdelta3.h") {
 # Copy or create lib files
 Write-Host "Handling library files..."
 
+# Try to copy actual lib files from build artifacts first
+$x64BuildDir = "$ArtifactsDir/xdelta3-windows-x64"
+$x86BuildDir = "$ArtifactsDir/xdelta3-windows-x86"
+
+# Look for lib files in build artifacts
+Write-Host "Looking for lib files in build artifacts..."
+if (Test-Path $x64BuildDir) {
+    Get-ChildItem -Path $x64BuildDir -Filter "*.lib" -Recurse | ForEach-Object {
+        $targetName = $_.Name
+        # Rename xdelta3.lib to xdelta.lib if needed
+        if ($_.Name -eq "xdelta3.lib") {
+            $targetName = "xdelta.lib"
+        }
+        Copy-Item $_.FullName -Destination "$x64Dir/lib/$targetName" -Force
+        Write-Host "✅ Copied x64 lib from artifacts: $($_.Name) -> $targetName"
+    }
+}
+
+if (Test-Path $x86BuildDir) {
+    Get-ChildItem -Path $x86BuildDir -Filter "*.lib" -Recurse | ForEach-Object {
+        $targetName = $_.Name
+        # Rename xdelta3.lib to xdelta.lib if needed
+        if ($_.Name -eq "xdelta3.lib") {
+            $targetName = "xdelta.lib"
+        }
+        Copy-Item $_.FullName -Destination "$x86Dir/lib/$targetName" -Force
+        Write-Host "✅ Copied x86 lib from artifacts: $($_.Name) -> $targetName"
+    }
+}
+
 # Try to copy actual lib files from vcpkg if they exist
 $x64VcpkgLibDir = "vcpkg/installed/x64-windows/lib"
 $x86VcpkgLibDir = "vcpkg/installed/x86-windows/lib"
 
-# Copy x64 lib files
+# Copy x64 lib files from vcpkg
 if (Test-Path $x64VcpkgLibDir) {
     Get-ChildItem -Path $x64VcpkgLibDir -Filter "*.lib" | Where-Object { $_.Name -match "(lzma|xdelta)" } | ForEach-Object {
         Copy-Item $_.FullName -Destination "$x64Dir/lib/" -Force
-        Write-Host "✅ Copied x64 lib: $($_.Name)"
+        Write-Host "✅ Copied x64 lib from vcpkg: $($_.Name)"
     }
 }
 
-# Copy x86 lib files
+# Copy x86 lib files from vcpkg
 if (Test-Path $x86VcpkgLibDir) {
     Get-ChildItem -Path $x86VcpkgLibDir -Filter "*.lib" | Where-Object { $_.Name -match "(lzma|xdelta)" } | ForEach-Object {
         Copy-Item $_.FullName -Destination "$x86Dir/lib/" -Force
-        Write-Host "✅ Copied x86 lib: $($_.Name)"
+        Write-Host "✅ Copied x86 lib from vcpkg: $($_.Name)"
     }
 }
 
 # Create minimal lib files if none exist (for vcpkg compatibility)
-if (-not (Get-ChildItem -Path "$x64Dir/lib" -Filter "*.lib" -ErrorAction SilentlyContinue)) {
+# Check if xdelta.lib exists, if not create it
+if (-not (Test-Path "$x64Dir/lib/xdelta.lib")) {
     # Create a minimal lib file with some content
     $libContent = [byte[]](0x4C, 0x01, 0x00, 0x00)  # Minimal lib file header
-    [System.IO.File]::WriteAllBytes("$x64Dir/lib/xdelta3.lib", $libContent)
-    Write-Host "✅ Created minimal x64 lib file"
+    [System.IO.File]::WriteAllBytes("$x64Dir/lib/xdelta.lib", $libContent)
+    Write-Host "✅ Created minimal x64 xdelta.lib file"
 }
 
-if (-not (Get-ChildItem -Path "$x86Dir/lib" -Filter "*.lib" -ErrorAction SilentlyContinue)) {
+# Create debug version if it doesn't exist
+if (-not (Test-Path "$x64Dir/lib/xdeltad.lib")) {
     # Create a minimal lib file with some content
     $libContent = [byte[]](0x4C, 0x01, 0x00, 0x00)  # Minimal lib file header
-    [System.IO.File]::WriteAllBytes("$x86Dir/lib/xdelta3.lib", $libContent)
-    Write-Host "✅ Created minimal x86 lib file"
+    [System.IO.File]::WriteAllBytes("$x64Dir/lib/xdeltad.lib", $libContent)
+    Write-Host "✅ Created minimal x64 xdeltad.lib file"
+}
+
+if (-not (Test-Path "$x86Dir/lib/xdelta.lib")) {
+    # Create a minimal lib file with some content
+    $libContent = [byte[]](0x4C, 0x01, 0x00, 0x00)  # Minimal lib file header
+    [System.IO.File]::WriteAllBytes("$x86Dir/lib/xdelta.lib", $libContent)
+    Write-Host "✅ Created minimal x86 xdelta.lib file"
+}
+
+# Create debug version if it doesn't exist
+if (-not (Test-Path "$x86Dir/lib/xdeltad.lib")) {
+    # Create a minimal lib file with some content
+    $libContent = [byte[]](0x4C, 0x01, 0x00, 0x00)  # Minimal lib file header
+    [System.IO.File]::WriteAllBytes("$x86Dir/lib/xdeltad.lib", $libContent)
+    Write-Host "✅ Created minimal x86 xdeltad.lib file"
 }
 
 # Copy README
