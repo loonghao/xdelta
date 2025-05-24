@@ -77,45 +77,36 @@ jobs:
           Write-Host "Using version: $version"
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Create vcpkg package structure
-        shell: pwsh
+      - name: Create test package structure
+        shell: bash
         run: |
-          $version = "${{ steps.get_version.outputs.version }}"
+          version="${{ steps.get_version.outputs.version }}"
 
-          # For PR testing, only test x64 architecture
-          Write-Host "Creating test package structure for x64 only..."
+          # Use unified packaging script for test package creation
+          .github/scripts/unified-packaging.sh \
+            --type test \
+            --os windows \
+            --arch x64 \
+            --version "$version" \
+            --artifacts-dir "downloaded-artifacts" \
+            --output-dir "test-packages"
 
-          # Create a simple test package structure
-          $packageDir = "xdelta-$version-windows"
-          $versionDir = "$packageDir/$version"
+          # Move the created package to expected location for compatibility
+          if [ -f "test-packages/xdelta3-windows-x64-test.zip" ]; then
+            mv "test-packages/xdelta3-windows-x64-test.zip" "xdelta-$version-windows.zip"
+            echo "✅ Test package created successfully"
+          else
+            echo "❌ Test package creation failed"
+            exit 1
+          fi
 
-          New-Item -ItemType Directory -Path "$versionDir/x64-windows/bin" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$versionDir/x64-windows/lib" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$versionDir/x64-windows/include/xdelta3" -Force | Out-Null
-
-          # Copy x64 files if they exist
-          if (Test-Path "downloaded-artifacts/xdelta3-windows-x64/xdelta3.exe") {
-            Copy-Item "downloaded-artifacts/xdelta3-windows-x64/xdelta3.exe" "$versionDir/x64-windows/bin/"
-            Write-Host "✅ Copied x64 executable"
-          }
-
-          if (Test-Path "downloaded-artifacts/xdelta3-windows-x64/xdelta.lib") {
-            Copy-Item "downloaded-artifacts/xdelta3-windows-x64/xdelta.lib" "$versionDir/x64-windows/lib/"
-            Write-Host "✅ Copied x64 library"
-          }
-
-          # Create a dummy header file for testing
-          Set-Content -Path "$versionDir/x64-windows/include/xdelta3/xdelta3.h" -Value "// Test header file"
-          Write-Host "✅ Created test header file"
-
-          # Create the package archive
-          Compress-Archive -Path $packageDir -DestinationPath "xdelta-$version-windows.zip" -Force
-          Write-Host "✅ Created package archive"
-
-          # Create SHA512 hash
-          $hash = Get-FileHash "xdelta-$version-windows.zip" -Algorithm SHA512
-          Set-Content -Path "xdelta-$version-windows.zip.sha512" -Value $hash.Hash.ToLower()
-          Write-Host "✅ Created SHA512 hash file"
+          # Create SHA512 hash for compatibility
+          if command -v sha512sum &> /dev/null; then
+            sha512sum "xdelta-$version-windows.zip" | awk '{print $1}' > "xdelta-$version-windows.zip.sha512"
+          elif command -v shasum &> /dev/null; then
+            shasum -a 512 "xdelta-$version-windows.zip" | awk '{print $1}' > "xdelta-$version-windows.zip.sha512"
+          fi
+          echo "✅ Created SHA512 hash file"
 
       - name: Test package structure
         shell: pwsh

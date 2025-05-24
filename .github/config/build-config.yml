@@ -1,17 +1,17 @@
-# 统一构建配置文件
-# 用于本地和CI环境的一致性配置
+# Unified build configuration file
+# Used for consistent configuration between local and CI environments
 
-# vcpkg配置
+# vcpkg configuration
 vcpkg:
   commit: "a34c873a9717a888f58dc05268dea15592c2f0ff"
   max_concurrency: 2
   environment_vars:
     - "HTTP_PROXY"
-    - "HTTPS_PROXY" 
+    - "HTTPS_PROXY"
     - "http_proxy"
     - "https_proxy"
 
-# 构建配置
+# Build configuration
 build:
   default_type: "Release"
   parallel_jobs: 2
@@ -28,7 +28,7 @@ build:
       - "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
       - "-DCMAKE_DISABLE_FIND_PACKAGE_LibLZMA=OFF"
 
-# 平台配置
+# Platform configuration
 platforms:
   windows:
     architectures:
@@ -44,7 +44,7 @@ platforms:
         triplet: "x64-linux"
         cmake_arch: ""
 
-# 缓存配置
+# Cache configuration
 cache:
   ccache:
     key_pattern: "{os}-{arch}-ccache-{hash}"
@@ -59,12 +59,12 @@ cache:
   vcpkg:
     key_pattern: "vcpkg-{os}-{triplet}-{hash}"
 
-# 重试配置
+# Retry configuration
 retry:
   max_attempts: 3
   delay_seconds: 30
 
-# 工件配置
+# Artifact configuration
 artifacts:
   retention_days:
     pr: 1
@@ -75,3 +75,67 @@ artifacts:
   linux:
     executable_path: "build/xdelta3"
     library_path: "build/libxdelta.a"
+
+# Package configuration
+packaging:
+  # Package types and their configurations
+  types:
+    binary:
+      description: "Binary distribution package"
+      include_readme: true
+      include_dependencies: true
+      archive_formats:
+        windows: "zip"
+        linux: "tar.gz"
+    vcpkg:
+      description: "vcpkg registry package"
+      include_headers: true
+      include_libraries: true
+      include_binaries: true
+      structure: "vcpkg-layout"
+      archive_formats:
+        windows: "zip"
+    test:
+      description: "Test package for PR validation"
+      minimal: true
+      architectures: ["x64"]
+      include_readme: false
+
+  # Package structure templates
+  structures:
+    binary:
+      windows:
+        - "xdelta3.exe"
+        - "*.dll"
+        - "README.txt"
+      linux:
+        - "xdelta3"
+        - "README.txt"
+    vcpkg-layout:
+      windows:
+        - "{version}/x64-windows/bin/xdelta3.exe"
+        - "{version}/x64-windows/lib/*.lib"
+        - "{version}/x64-windows/include/xdelta3/*.h"
+        - "{version}/x86-windows/bin/xdelta3.exe"
+        - "{version}/x86-windows/lib/*.lib"
+        - "{version}/x86-windows/include/xdelta3/*.h"
+        - "{version}/README.md"
+        - "{version}/usage.md"
+
+  # Archive naming patterns
+  naming:
+    binary: "xdelta3-{os}-{arch}"
+    vcpkg: "xdelta-{version}-windows"
+    test: "xdelta3-{os}-{arch}-test"
+
+  # Dependencies to include
+  dependencies:
+    windows:
+      required:
+        - "liblzma.dll"
+      optional:
+        - "zlib.dll"
+        - "bzip2.dll"
+    linux:
+      required: []
+      optional: []

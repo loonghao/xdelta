@@ -1,9 +1,19 @@
 #!/bin/bash
 
+# DEPRECATED: This script is deprecated in favor of unified-packaging.sh
+# Please use .github/scripts/unified-packaging.sh --type binary instead
+# This script will be removed in a future version
+
 # Artifact preparation script
 # Unified handling of Windows and Linux artifact preparation
 
 set -e
+
+# Show deprecation warning
+echo "⚠️ WARNING: prepare-artifacts.sh is deprecated"
+echo "Please use: .github/scripts/unified-packaging.sh --type binary"
+echo "This script will be removed in a future version"
+echo ""
 
 # Default configuration
 OS=""

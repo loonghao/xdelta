@@ -211,10 +211,13 @@ jobs:
       - name: Prepare artifacts
         shell: bash
         run: |
-          .github/scripts/prepare-artifacts.sh \
+          .github/scripts/unified-packaging.sh \
+            --type binary \
             --os "${{ matrix.os }}" \
             --arch "${{ matrix.arch }}" \
             --build-type "${{ inputs.build_type }}" \
+            --artifacts-dir "artifacts" \
+            --output-dir "artifacts" \
             ${{ inputs.create_archives && '--create-archives' || '' }}
 
       - name: Upload artifacts
