@@ -128,14 +128,30 @@ jobs:
 
       - name: Create vcpkg package structure
         id: package
-        shell: pwsh
+        shell: bash
         run: |
-          $version = "${{ needs.get-version.outputs.version }}"
-          $sha512 = ./.github/scripts/prepare-vcpkg-package.ps1 -Version $version -ArtifactsDir "downloaded-artifacts"
+          version="${{ needs.get-version.outputs.version }}"
 
-          # Output hash for later use
-          echo "SHA512 hash: $sha512"
-          echo "sha512=$sha512" >> $env:GITHUB_OUTPUT
+          # Use unified packaging script for vcpkg package creation
+          .github/scripts/unified-packaging.sh \
+            --type vcpkg \
+            --version "$version" \
+            --artifacts-dir "downloaded-artifacts" \
+            --output-dir "vcpkg-packages"
+
+          # Extract SHA512 hash from the created hash file
+          if [ -f "vcpkg-packages/xdelta-$version-windows.zip.sha512" ]; then
+            sha512=$(cat "vcpkg-packages/xdelta-$version-windows.zip.sha512")
+            echo "SHA512 hash: $sha512"
+            echo "sha512=$sha512" >> $GITHUB_OUTPUT
+
+            # Move files to expected locations for compatibility
+            mv "vcpkg-packages/xdelta-$version-windows.zip" .
+            mv "vcpkg-packages/xdelta-$version-windows.zip.sha512" .
+          else
+            echo "❌ SHA512 hash file not found"
+            exit 1
+          fi
 
       - name: Upload vcpkg package
         uses: actions/upload-artifact@v4

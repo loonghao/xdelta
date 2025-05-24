@@ -1,6 +1,16 @@
 #!/usr/bin/env pwsh
+# DEPRECATED: This script is deprecated in favor of unified-packaging.sh
+# Please use .github/scripts/unified-packaging.sh --type vcpkg instead
+# This script will be removed in a future version
+
 # Script to prepare vcpkg package structure from build artifacts
 # Usage: ./prepare-vcpkg-package.ps1 -Version "3.1.0" -ArtifactsDir "downloaded-artifacts" -OutputDir "xdelta-package"
+
+# Show deprecation warning
+Write-Host "⚠️ WARNING: prepare-vcpkg-package.ps1 is deprecated" -ForegroundColor Yellow
+Write-Host "Please use: .github/scripts/unified-packaging.sh --type vcpkg" -ForegroundColor Yellow
+Write-Host "This script will be removed in a future version" -ForegroundColor Yellow
+Write-Host ""
 
 param(
     [Parameter(Mandatory=$true)]
