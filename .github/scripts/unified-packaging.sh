@@ -751,12 +751,21 @@ create_archive_tar() {
     # Remove existing archive
     [[ -f "$archive_path" ]] && rm "$archive_path"
 
-    # Create tar.gz archive
-    (cd "$(dirname "$source_dir")" && tar -czf "$(basename "$archive_path")" "$(basename "$source_dir")")
-    mv "$(dirname "$source_dir")/$(basename "$archive_path")" "$archive_path"
+    # Get absolute paths to avoid confusion
+    local abs_source_dir=$(realpath "$source_dir")
+    local abs_archive_path=$(realpath "$archive_path" 2>/dev/null || echo "$archive_path")
 
-    if [[ -f "$archive_path" ]]; then
-        log_success "Created TAR.GZ archive: $archive_path"
+    # Create tar.gz archive
+    local temp_archive="/tmp/$(basename "$archive_path")"
+    (cd "$(dirname "$abs_source_dir")" && tar -czf "$temp_archive" "$(basename "$abs_source_dir")")
+
+    # Move to final location if different
+    if [[ "$temp_archive" != "$abs_archive_path" ]]; then
+        mv "$temp_archive" "$abs_archive_path"
+    fi
+
+    if [[ -f "$abs_archive_path" ]]; then
+        log_success "Created TAR.GZ archive: $abs_archive_path"
     else
         log_error "Failed to create TAR.GZ archive"
         return 1
