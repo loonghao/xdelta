@@ -974,21 +974,45 @@ create_archive_zip() {
     # Remove existing archive
     [[ -f "$archive_path" ]] && rm "$archive_path"
 
+    # Convert paths to absolute paths to avoid issues
+    local abs_source_dir=$(realpath "$source_dir" 2>/dev/null || echo "$source_dir")
+    local abs_archive_path=$(realpath "$archive_path" 2>/dev/null || echo "$archive_path")
+
+    log_info "Source directory: $abs_source_dir"
+    log_info "Archive path: $abs_archive_path"
+
     # Create archive using different methods based on availability
     if command -v powershell.exe &> /dev/null; then
-        # Use PowerShell on Windows
-        powershell.exe -Command "Compress-Archive -Path '$source_dir' -DestinationPath '$archive_path' -Force"
+        # Use PowerShell on Windows - convert to Windows paths
+        local win_source_dir=$(cygpath -w "$abs_source_dir" 2>/dev/null || echo "$abs_source_dir")
+        local win_archive_path=$(cygpath -w "$abs_archive_path" 2>/dev/null || echo "$abs_archive_path")
+
+        log_info "PowerShell paths - Source: $win_source_dir, Archive: $win_archive_path"
+
+        # Use PowerShell with proper error handling
+        if powershell.exe -Command "try { Compress-Archive -Path '$win_source_dir' -DestinationPath '$win_archive_path' -Force; exit 0 } catch { Write-Error \$_.Exception.Message; exit 1 }"; then
+            log_success "PowerShell archive creation succeeded"
+        else
+            log_error "PowerShell archive creation failed, trying fallback method"
+            # Fallback to zip command if available
+            if command -v zip &> /dev/null; then
+                (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")")
+            else
+                log_error "No fallback ZIP creation tool available"
+                return 1
+            fi
+        fi
     elif command -v zip &> /dev/null; then
         # Use zip command
-        (cd "$(dirname "$source_dir")" && zip -r "$(basename "$archive_path")" "$(basename "$source_dir")")
-        mv "$(dirname "$source_dir")/$(basename "$archive_path")" "$archive_path"
+        log_info "Using zip command"
+        (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")")
     else
         log_error "No ZIP creation tool available"
         return 1
     fi
 
-    if [[ -f "$archive_path" ]]; then
-        log_success "Created ZIP archive: $archive_path"
+    if [[ -f "$abs_archive_path" ]]; then
+        log_success "Created ZIP archive: $abs_archive_path"
     else
         log_error "Failed to create ZIP archive"
         return 1
