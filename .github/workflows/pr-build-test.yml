@@ -82,7 +82,8 @@ jobs:
         run: |
           version="${{ steps.get_version.outputs.version }}"
 
-          # Use unified packaging script for test package creation
+          # Test 1: Create test package (existing test)
+          echo "🧪 Testing test package creation..."
           .github/scripts/unified-packaging.sh \
             --type test \
             --os windows \
@@ -91,22 +92,40 @@ jobs:
             --artifacts-dir "downloaded-artifacts" \
             --output-dir "test-packages"
 
-          # Move the created package to expected location for compatibility
           if [ -f "test-packages/xdelta3-windows-x64-test.zip" ]; then
-            mv "test-packages/xdelta3-windows-x64-test.zip" "xdelta-$version-windows.zip"
             echo "✅ Test package created successfully"
           else
             echo "❌ Test package creation failed"
             exit 1
           fi
 
-          # Create SHA512 hash for compatibility
-          if command -v sha512sum &> /dev/null; then
-            sha512sum "xdelta-$version-windows.zip" | awk '{print $1}' > "xdelta-$version-windows.zip.sha512"
-          elif command -v shasum &> /dev/null; then
-            shasum -a 512 "xdelta-$version-windows.zip" | awk '{print $1}' > "xdelta-$version-windows.zip.sha512"
+          # Test 2: Create actual vcpkg package (new critical test)
+          echo "📦 Testing vcpkg package creation..."
+
+          # Prepare artifacts directory structure for vcpkg packaging
+          mkdir -p "downloaded-artifacts/xdelta3-windows-x64"
+          cp -r "downloaded-artifacts/windows-x64/"* "downloaded-artifacts/xdelta3-windows-x64/"
+
+          .github/scripts/unified-packaging.sh \
+            --type vcpkg \
+            --version "$version" \
+            --artifacts-dir "downloaded-artifacts" \
+            --output-dir "vcpkg-packages"
+
+          # Check if vcpkg package was created
+          if [ -f "vcpkg-packages/xdelta-$version-windows.zip" ]; then
+            echo "✅ vcpkg package created successfully"
+            # Move for compatibility testing
+            mv "vcpkg-packages/xdelta-$version-windows.zip" "xdelta-$version-windows.zip"
+            mv "vcpkg-packages/xdelta-$version-windows.zip.sha512" "xdelta-$version-windows.zip.sha512"
+          else
+            echo "❌ vcpkg package creation failed"
+            echo "Available files in vcpkg-packages:"
+            find vcpkg-packages -type f | sort
+            exit 1
           fi
-          echo "✅ Created SHA512 hash file"
+
+          echo "✅ Both test and vcpkg packages created successfully"
 
       - name: Test package structure
         shell: pwsh
