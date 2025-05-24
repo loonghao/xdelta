@@ -45,26 +45,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.setup-matrix.outputs.matrix }}
-    
+
     steps:
       - name: Setup build matrix
         id: setup-matrix
         run: |
-          # 解析输入参数并生成构建矩阵
+          # Parse input parameters and generate build matrix
           platforms='${{ inputs.platforms }}'
           architectures='${{ inputs.architectures }}'
-          
+
           echo "Platforms: $platforms"
           echo "Architectures: $architectures"
-          
-          # 生成构建矩阵
-          matrix=$(cat << EOF
-          {
-            "include": [
-          EOF
-          )
-          
-          # 添加Windows构建配置
+
+          # Initialize matrix
+          matrix='{"include":[]}'
+
+          # Add Windows build configurations
           if echo "$platforms" | grep -q "windows"; then
             for arch in $(echo "$architectures" | jq -r '.[]'); do
               if [[ "$arch" == "x64" ]]; then
@@ -78,22 +74,26 @@ jobs:
               else
                 continue
               fi
-              
-              matrix+=$(cat << EOF
-              {
-                "os": "windows",
-                "arch": "$arch",
-                "triplet": "$triplet",
-                "cmake_arch": "$cmake_arch",
-                "runner": "$runner",
-                "shell": "pwsh"
-              },
-          EOF
-              )
+
+              # Add Windows configuration to matrix
+              matrix=$(echo "$matrix" | jq --arg os "windows" \
+                --arg arch "$arch" \
+                --arg triplet "$triplet" \
+                --arg cmake_arch "$cmake_arch" \
+                --arg runner "$runner" \
+                --arg shell "pwsh" \
+                '.include += [{
+                  "os": $os,
+                  "arch": $arch,
+                  "triplet": $triplet,
+                  "cmake_arch": $cmake_arch,
+                  "runner": $runner,
+                  "shell": $shell
+                }]')
             done
           fi
-          
-          # 添加Linux构建配置
+
+          # Add Linux build configurations
           if echo "$platforms" | grep -q "linux"; then
             for arch in $(echo "$architectures" | jq -r '.[]'); do
               if [[ "$arch" == "x64" ]]; then
@@ -103,32 +103,28 @@ jobs:
               else
                 continue
               fi
-              
-              matrix+=$(cat << EOF
-              {
-                "os": "linux",
-                "arch": "$arch", 
-                "triplet": "$triplet",
-                "cmake_arch": "$cmake_arch",
-                "runner": "$runner",
-                "shell": "bash"
-              },
-          EOF
-              )
+
+              # Add Linux configuration to matrix
+              matrix=$(echo "$matrix" | jq --arg os "linux" \
+                --arg arch "$arch" \
+                --arg triplet "$triplet" \
+                --arg cmake_arch "$cmake_arch" \
+                --arg runner "$runner" \
+                --arg shell "bash" \
+                '.include += [{
+                  "os": $os,
+                  "arch": $arch,
+                  "triplet": $triplet,
+                  "cmake_arch": $cmake_arch,
+                  "runner": $runner,
+                  "shell": $shell
+                }]')
             done
           fi
-          
-          # 移除最后的逗号并关闭JSON
-          matrix=$(echo "$matrix" | sed '$ s/,$//')
-          matrix+=$(cat << EOF
-            ]
-          }
-          EOF
-          )
-          
+
           echo "Generated matrix:"
           echo "$matrix" | jq .
-          
+
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
   build:
