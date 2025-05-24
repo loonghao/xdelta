@@ -144,14 +144,49 @@ validate_config() {
             ;;
     esac
 
-    if [[ -z "$ARTIFACTS_DIR" ]]; then
-        log_error "ARTIFACTS_DIR is required"
-        errors=$((errors + 1))
-    fi
+    # For binary packages, check if we have either build directory or artifacts directory
+    if [[ "$PACKAGE_TYPE" == "binary" ]]; then
+        local has_build_dir=false
+        local has_artifacts_dir=false
 
-    if [[ ! -d "$ARTIFACTS_DIR" ]]; then
-        log_error "Artifacts directory does not exist: $ARTIFACTS_DIR"
-        errors=$((errors + 1))
+        # Check for build directory with built files
+        if [[ -d "build" ]]; then
+            case "$OS" in
+                windows)
+                    if [[ -f "build/$BUILD_TYPE/xdelta3.exe" ]]; then
+                        has_build_dir=true
+                    fi
+                    ;;
+                linux)
+                    if [[ -f "build/xdelta3" ]]; then
+                        has_build_dir=true
+                    fi
+                    ;;
+            esac
+        fi
+
+        # Check for artifacts directory
+        if [[ -n "$ARTIFACTS_DIR" && -d "$ARTIFACTS_DIR" ]]; then
+            has_artifacts_dir=true
+        fi
+
+        if [[ "$has_build_dir" == "false" && "$has_artifacts_dir" == "false" ]]; then
+            log_error "Neither build directory with built files nor artifacts directory found"
+            log_error "Expected: build/$BUILD_TYPE/xdelta3.exe (Windows) or build/xdelta3 (Linux)"
+            log_error "Or: artifacts directory at $ARTIFACTS_DIR"
+            errors=$((errors + 1))
+        fi
+    else
+        # For non-binary packages, artifacts directory is required
+        if [[ -z "$ARTIFACTS_DIR" ]]; then
+            log_error "ARTIFACTS_DIR is required for $PACKAGE_TYPE packages"
+            errors=$((errors + 1))
+        fi
+
+        if [[ ! -d "$ARTIFACTS_DIR" ]]; then
+            log_error "Artifacts directory does not exist: $ARTIFACTS_DIR"
+            errors=$((errors + 1))
+        fi
     fi
 
     if [[ $errors -gt 0 ]]; then
@@ -258,24 +293,43 @@ package_binary() {
     local package_name="xdelta3-$OS-$ARCH"
     local package_dir="$OUTPUT_DIR/$package_name"
 
-    # For binary packaging, we expect artifacts to be in the build directory
-    # This is called from the reusable build workflow after building
-    local artifact_source="build"
+    # For binary packaging, check if we're working with build directory or artifacts directory
+    local artifact_source
+    if [[ -d "build" && -f "build/$BUILD_TYPE/xdelta3.exe" ]] || [[ -d "build" && -f "build/xdelta3" ]]; then
+        # We're in the build workflow context
+        artifact_source="build"
+        log_info "Using build directory as artifact source"
+    elif [[ -d "$ARTIFACTS_DIR" ]]; then
+        # We're in a context where artifacts have been downloaded/prepared
+        artifact_source="$ARTIFACTS_DIR"
+        log_info "Using artifacts directory as source: $artifact_source"
+    else
+        log_error "Neither build directory nor artifacts directory found"
+        return 1
+    fi
 
     # Create package directory
     mkdir -p "$package_dir"
 
-    # Copy artifacts based on platform
+    # Copy artifacts based on platform and source type
     case "$OS" in
         windows)
-            copy_windows_artifacts_from_build "$artifact_source" "$package_dir"
+            if [[ "$artifact_source" == "build" ]]; then
+                copy_windows_artifacts_from_build "$artifact_source" "$package_dir"
+            else
+                copy_windows_artifacts "$artifact_source/$package_name" "$package_dir"
+            fi
             create_readme_windows "$package_dir"
             if [[ "$CREATE_ARCHIVES" == "true" ]]; then
                 create_archive_zip "$package_dir" "$OUTPUT_DIR/$package_name.zip"
             fi
             ;;
         linux)
-            copy_linux_artifacts_from_build "$artifact_source" "$package_dir"
+            if [[ "$artifact_source" == "build" ]]; then
+                copy_linux_artifacts_from_build "$artifact_source" "$package_dir"
+            else
+                copy_linux_artifacts "$artifact_source/$package_name" "$package_dir"
+            fi
             create_readme_linux "$package_dir"
             if [[ "$CREATE_ARCHIVES" == "true" ]]; then
                 create_archive_tar "$package_dir" "$OUTPUT_DIR/$package_name.tar.gz"
