@@ -522,11 +522,31 @@ copy_windows_artifacts_from_build() {
         return 1
     fi
 
-    # Copy library file
-    local lib_path="$build_dir/$BUILD_TYPE/xdelta.lib"
-    if [[ -f "$lib_path" ]]; then
-        cp "$lib_path" "$dest_dir/"
-        log_success "Copied xdelta.lib"
+    # Copy library file - try different possible locations
+    local lib_paths=(
+        "$build_dir/$BUILD_TYPE/xdelta.lib"    # Standard MSVC location
+        "$build_dir/xdelta.lib"                # Alternative location
+    )
+
+    local lib_found=false
+    for lib_path in "${lib_paths[@]}"; do
+        if [[ -f "$lib_path" ]]; then
+            cp "$lib_path" "$dest_dir/"
+            log_success "Copied xdelta.lib from $lib_path"
+            lib_found=true
+            break
+        fi
+    done
+
+    if [[ "$lib_found" == "false" ]]; then
+        log_warning "xdelta.lib not found in any of the expected locations:"
+        for lib_path in "${lib_paths[@]}"; do
+            log_warning "  - $lib_path"
+        done
+
+        # List available files for debugging
+        log_info "Available files in build directory:"
+        find "$build_dir" -name "*.lib" -o -name "xdelta*" | head -10
     fi
 
     # Copy vcpkg DLL files
@@ -565,11 +585,31 @@ copy_linux_artifacts_from_build() {
         return 1
     fi
 
-    # Copy library file
-    local lib_path="$build_dir/libxdelta.a"
-    if [[ -f "$lib_path" ]]; then
-        cp "$lib_path" "$dest_dir/"
-        log_success "Copied libxdelta.a"
+    # Copy library file - try different possible locations
+    local lib_paths=(
+        "$build_dir/libxdelta.a"           # Standard location
+        "$build_dir/$BUILD_TYPE/libxdelta.a"  # Build type subdirectory
+    )
+
+    local lib_found=false
+    for lib_path in "${lib_paths[@]}"; do
+        if [[ -f "$lib_path" ]]; then
+            cp "$lib_path" "$dest_dir/"
+            log_success "Copied libxdelta.a from $lib_path"
+            lib_found=true
+            break
+        fi
+    done
+
+    if [[ "$lib_found" == "false" ]]; then
+        log_warning "libxdelta.a not found in any of the expected locations:"
+        for lib_path in "${lib_paths[@]}"; do
+            log_warning "  - $lib_path"
+        done
+
+        # List available files for debugging
+        log_info "Available files in build directory:"
+        find "$build_dir" -name "*.a" -o -name "libxdelta*" | head -10
     fi
 }
 
@@ -634,23 +674,66 @@ copy_vcpkg_artifacts() {
 
     # Copy artifacts for each architecture
     for arch in x64 x86; do
-        local artifact_source="$ARTIFACTS_DIR/windows-$arch"
-        local dest_dir="$package_dir/$VERSION/$arch-windows"
+        # Try different possible artifact source paths
+        local artifact_sources=(
+            "$ARTIFACTS_DIR/xdelta3-windows-$arch"  # From reusable build workflow
+            "$ARTIFACTS_DIR/windows-$arch"          # Alternative naming
+        )
 
-        if [[ -d "$artifact_source" ]]; then
+        local dest_dir="$package_dir/$VERSION/$arch-windows"
+        local artifact_source=""
+
+        # Find the correct artifact source directory
+        for source in "${artifact_sources[@]}"; do
+            if [[ -d "$source" ]]; then
+                artifact_source="$source"
+                log_info "Found $arch artifacts at: $artifact_source"
+                break
+            fi
+        done
+
+        if [[ -n "$artifact_source" && -d "$artifact_source" ]]; then
             # Copy executable
             if [[ -f "$artifact_source/xdelta3.exe" ]]; then
                 cp "$artifact_source/xdelta3.exe" "$dest_dir/bin/"
-                log_success "Copied $arch executable"
+                log_success "Copied $arch executable to bin/"
+            else
+                log_warning "xdelta3.exe not found in $artifact_source"
+            fi
+
+            # Copy library files
+            if [[ -f "$artifact_source/xdelta.lib" ]]; then
+                cp "$artifact_source/xdelta.lib" "$dest_dir/lib/"
+                log_success "Copied $arch library to lib/"
+            else
+                log_warning "xdelta.lib not found in $artifact_source"
             fi
 
             # Copy DLLs
-            find "$artifact_source" -name "*.dll" -exec cp {} "$dest_dir/bin/" \; 2>/dev/null || true
+            local dll_count=0
+            while IFS= read -r -d '' dll; do
+                cp "$dll" "$dest_dir/bin/"
+                log_success "Copied DLL: $(basename "$dll")"
+                ((dll_count++))
+            done < <(find "$artifact_source" -name "*.dll" -print0 2>/dev/null)
 
-            # Copy libraries
-            find "$artifact_source" -name "*.lib" -exec cp {} "$dest_dir/lib/" \; 2>/dev/null || true
+            if [[ $dll_count -eq 0 ]]; then
+                log_info "No DLL files found in $artifact_source"
+            fi
         else
-            log_warning "$arch artifacts not found at $artifact_source"
+            log_error "$arch artifacts not found. Checked paths:"
+            for source in "${artifact_sources[@]}"; do
+                log_error "  - $source"
+            done
+
+            # List available directories for debugging
+            log_info "Available directories in $ARTIFACTS_DIR:"
+            if [[ -d "$ARTIFACTS_DIR" ]]; then
+                find "$ARTIFACTS_DIR" -maxdepth 2 -type d | sort
+            else
+                log_error "Artifacts directory $ARTIFACTS_DIR does not exist"
+            fi
+            return 1
         fi
     done
 
