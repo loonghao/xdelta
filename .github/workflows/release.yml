@@ -187,7 +187,7 @@ jobs:
           files: |
             artifacts/xdelta3-windows-x64/xdelta3-windows-x64.zip
             artifacts/xdelta3-windows-x86/xdelta3-windows-x86.zip
-            artifacts/xdelta3-linux/xdelta3-linux.tar.gz
+            artifacts/xdelta3-linux-x64/xdelta3-linux-x64.tar.gz
             artifacts/vcpkg-package/xdelta-${{ needs.get-version.outputs.version }}-windows.zip
             artifacts/vcpkg-package/xdelta-${{ needs.get-version.outputs.version }}-windows.zip.sha512
 
