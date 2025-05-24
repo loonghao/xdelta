@@ -355,11 +355,41 @@ package_vcpkg() {
     # Create vcpkg directory structure
     mkdir -p "$package_dir/$VERSION"
 
-    # Create architecture-specific directories
+    # First, discover what architectures are actually available
+    local available_archs=()
     for arch in x64 x86; do
+        local artifact_sources=(
+            "$ARTIFACTS_DIR/xdelta3-windows-$arch"  # From reusable build workflow
+            "$ARTIFACTS_DIR/windows-$arch"          # Alternative naming
+        )
+
+        for source in "${artifact_sources[@]}"; do
+            if [[ -d "$source" ]]; then
+                available_archs+=("$arch")
+                log_info "Found available architecture for vcpkg package: $arch"
+                break
+            fi
+        done
+    done
+
+    # Check if we found any architectures
+    if [[ ${#available_archs[@]} -eq 0 ]]; then
+        log_error "No Windows artifacts found for vcpkg package creation"
+        log_info "Available directories in $ARTIFACTS_DIR:"
+        if [[ -d "$ARTIFACTS_DIR" ]]; then
+            find "$ARTIFACTS_DIR" -maxdepth 2 -type d | sort
+        fi
+        return 1
+    fi
+
+    log_info "Creating vcpkg package for ${#available_archs[@]} architecture(s): ${available_archs[*]}"
+
+    # Create architecture-specific directories only for available architectures
+    for arch in "${available_archs[@]}"; do
         mkdir -p "$package_dir/$VERSION/$arch-windows/bin"
         mkdir -p "$package_dir/$VERSION/$arch-windows/lib"
         mkdir -p "$package_dir/$VERSION/$arch-windows/include/xdelta3"
+        log_info "Created directory structure for $arch-windows"
     done
 
     # Copy artifacts for each architecture
@@ -672,8 +702,39 @@ copy_vcpkg_artifacts() {
 
     log_info "Copying vcpkg artifacts"
 
-    # Copy artifacts for each architecture
+    # First, discover what architectures are actually available
+    local available_archs=()
     for arch in x64 x86; do
+        local artifact_sources=(
+            "$ARTIFACTS_DIR/xdelta3-windows-$arch"  # From reusable build workflow
+            "$ARTIFACTS_DIR/windows-$arch"          # Alternative naming
+        )
+
+        for source in "${artifact_sources[@]}"; do
+            if [[ -d "$source" ]]; then
+                available_archs+=("$arch")
+                log_info "Discovered available architecture: $arch at $source"
+                break
+            fi
+        done
+    done
+
+    # Check if we found any architectures
+    if [[ ${#available_archs[@]} -eq 0 ]]; then
+        log_error "No Windows artifacts found in any expected locations"
+        log_info "Available directories in $ARTIFACTS_DIR:"
+        if [[ -d "$ARTIFACTS_DIR" ]]; then
+            find "$ARTIFACTS_DIR" -maxdepth 2 -type d | sort
+        else
+            log_error "Artifacts directory $ARTIFACTS_DIR does not exist"
+        fi
+        return 1
+    fi
+
+    log_info "Processing ${#available_archs[@]} available architecture(s): ${available_archs[*]}"
+
+    # Copy artifacts for each available architecture
+    for arch in "${available_archs[@]}"; do
         # Try different possible artifact source paths
         local artifact_sources=(
             "$ARTIFACTS_DIR/xdelta3-windows-$arch"  # From reusable build workflow
@@ -687,7 +748,7 @@ copy_vcpkg_artifacts() {
         for source in "${artifact_sources[@]}"; do
             if [[ -d "$source" ]]; then
                 artifact_source="$source"
-                log_info "Found $arch artifacts at: $artifact_source"
+                log_info "Processing $arch artifacts from: $artifact_source"
                 break
             fi
         done
@@ -721,31 +782,29 @@ copy_vcpkg_artifacts() {
                 log_info "No DLL files found in $artifact_source"
             fi
         else
-            log_error "$arch artifacts not found. Checked paths:"
-            for source in "${artifact_sources[@]}"; do
-                log_error "  - $source"
-            done
-
-            # List available directories for debugging
-            log_info "Available directories in $ARTIFACTS_DIR:"
-            if [[ -d "$ARTIFACTS_DIR" ]]; then
-                find "$ARTIFACTS_DIR" -maxdepth 2 -type d | sort
-            else
-                log_error "Artifacts directory $ARTIFACTS_DIR does not exist"
-            fi
+            log_error "Failed to find artifact source for $arch (this should not happen)"
             return 1
         fi
     done
 
-    # Copy header files
-    copy_header_files "$package_dir/$VERSION"
+    # Copy header files to all architecture directories (including missing ones)
+    copy_header_files "$package_dir/$VERSION" "${available_archs[@]}"
 }
 
 # Copy header files for vcpkg
 copy_header_files() {
     local version_dir="$1"
+    shift  # Remove first argument
+    local available_archs=("$@")  # Get remaining arguments as array
 
     log_info "Copying header files"
+
+    # If no architectures specified, default to both
+    if [[ ${#available_archs[@]} -eq 0 ]]; then
+        available_archs=("x64" "x86")
+    fi
+
+    log_info "Copying headers for architectures: ${available_archs[*]}"
 
     # Look for header files in the source tree
     local header_files=("xdelta3.h" "xdelta3-decode.h" "xdelta3-list.h" "xdelta3-main.h" "xdelta3-second.h" "xdelta3-test.h")
@@ -756,21 +815,32 @@ copy_header_files() {
 
         for path in "${header_paths[@]}"; do
             if [[ -f "$path" ]]; then
-                # Copy to both architectures
-                cp "$path" "$version_dir/x64-windows/include/xdelta3/"
-                cp "$path" "$version_dir/x86-windows/include/xdelta3/"
-                log_success "Copied $header"
+                # Copy to all available architectures
+                for arch in "${available_archs[@]}"; do
+                    local arch_include_dir="$version_dir/$arch-windows/include/xdelta3"
+                    if [[ -d "$arch_include_dir" ]]; then
+                        cp "$path" "$arch_include_dir/"
+                        log_success "Copied $header to $arch-windows"
+                    fi
+                done
                 break
             fi
         done
     done
 
     # Create minimal header if none found
-    if [[ ! -f "$version_dir/x64-windows/include/xdelta3/xdelta3.h" ]]; then
-        log_warning "No header files found, creating minimal xdelta3.h"
-        echo "// Minimal xdelta3.h for vcpkg compatibility" > "$version_dir/x64-windows/include/xdelta3/xdelta3.h"
-        echo "// Minimal xdelta3.h for vcpkg compatibility" > "$version_dir/x86-windows/include/xdelta3/xdelta3.h"
-    fi
+    local header_created=false
+    for arch in "${available_archs[@]}"; do
+        local arch_include_dir="$version_dir/$arch-windows/include/xdelta3"
+        if [[ -d "$arch_include_dir" && ! -f "$arch_include_dir/xdelta3.h" ]]; then
+            if [[ "$header_created" == "false" ]]; then
+                log_warning "No header files found, creating minimal xdelta3.h"
+                header_created=true
+            fi
+            echo "// Minimal xdelta3.h for vcpkg compatibility" > "$arch_include_dir/xdelta3.h"
+            log_success "Created minimal xdelta3.h for $arch-windows"
+        fi
+    done
 }
 
 # Create Windows README
