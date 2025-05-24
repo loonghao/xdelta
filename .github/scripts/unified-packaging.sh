@@ -1056,7 +1056,17 @@ create_archive_zip() {
     log_info "Archive path: $abs_archive_path"
 
     # Create archive using different methods based on availability
-    if command -v powershell.exe &> /dev/null; then
+    # Try zip command first as it's more reliable in Git Bash environment
+    if command -v zip &> /dev/null; then
+        # Use zip command
+        log_info "Using zip command"
+        if (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")"); then
+            log_success "Zip command succeeded"
+        else
+            log_error "Zip command failed"
+            return 1
+        fi
+    elif command -v powershell.exe &> /dev/null; then
         log_info "Using PowerShell for ZIP creation"
 
         # Convert to Windows paths if possible
@@ -1084,10 +1094,31 @@ create_archive_zip() {
         log_info "PowerShell paths - Source: $win_source_dir, Archive: $win_archive_path"
 
         # Use PowerShell with improved error handling and .NET compression
+        # We need to include the parent directory in the archive, so we'll work from the parent
+        local parent_dir_unix=$(dirname "$abs_source_dir")
+        local dir_name=$(basename "$abs_source_dir")
+
+        # Convert parent directory to Windows path
+        local parent_dir_win="$parent_dir_unix"
+        if command -v cygpath &> /dev/null; then
+            if parent_dir_win=$(cygpath -w "$parent_dir_unix" 2>/dev/null); then
+                log_info "Converted parent directory to Windows path: $parent_dir_win"
+            else
+                log_warning "Failed to convert parent directory path, using: $parent_dir_unix"
+                parent_dir_win="$parent_dir_unix"
+            fi
+        fi
+
         local ps_command="try {
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            # Import the Archive module
+            Import-Module Microsoft.PowerShell.Archive -Force
+
             if (Test-Path '$win_archive_path') { Remove-Item '$win_archive_path' -Force }
-            [System.IO.Compression.ZipFile]::CreateFromDirectory('$win_source_dir', '$win_archive_path')
+
+            # Change to parent directory and create archive with the directory name included
+            Set-Location '$parent_dir_win'
+            Compress-Archive -Path '$dir_name' -DestinationPath '$win_archive_path' -Force
+
             if (Test-Path '$win_archive_path') {
                 Write-Host 'Archive created successfully'
                 exit 0
@@ -1100,31 +1131,10 @@ create_archive_zip() {
             exit 1
         }"
 
-        if powershell.exe -Command "$ps_command"; then
+        if powershell.exe -ExecutionPolicy Bypass -Command "$ps_command"; then
             log_success "PowerShell archive creation succeeded"
         else
-            log_error "PowerShell archive creation failed, trying fallback method"
-            # Fallback to zip command if available
-            if command -v zip &> /dev/null; then
-                log_info "Using zip command as fallback"
-                if (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")"); then
-                    log_success "Zip command fallback succeeded"
-                else
-                    log_error "Zip command fallback also failed"
-                    return 1
-                fi
-            else
-                log_error "No fallback ZIP creation tool available"
-                return 1
-            fi
-        fi
-    elif command -v zip &> /dev/null; then
-        # Use zip command
-        log_info "Using zip command"
-        if (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")"); then
-            log_success "Zip command succeeded"
-        else
-            log_error "Zip command failed"
+            log_error "PowerShell archive creation failed"
             return 1
         fi
     else
