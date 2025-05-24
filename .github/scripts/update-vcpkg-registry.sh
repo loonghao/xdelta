@@ -121,8 +121,8 @@ if [[ "$DRY_RUN" == "false" ]]; then
   # Stage the changes to get the correct git-tree
   git add vcpkg-registry/
 
-  # Get the git-tree hash for the vcpkg-registry directory
-  GIT_TREE=$(git write-tree --prefix=vcpkg-registry/)
+  # Get the git-tree hash for the ports/xdelta directory
+  GIT_TREE=$(git write-tree --prefix=vcpkg-registry/ports/xdelta/)
   echo "Git-tree hash: $GIT_TREE"
 
   # Update git-tree in versions/x-/xdelta.json
