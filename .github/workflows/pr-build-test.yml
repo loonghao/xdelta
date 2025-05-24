@@ -9,252 +9,47 @@ on:
       - 'CMakeLists.txt'
       - 'vcpkg.json'
       - 'xdelta3/**'
-      - '.github/workflows/reusable-build.yml'
-      - '.github/workflows/release.yml'
+      - 'vcpkg-registry/**'
+      - 'test-cmake-config/**'
+      - '.github/workflows/**'
+      - '.github/scripts/**'
+      - '.github/config/**'
   workflow_dispatch:
 
 jobs:
-  test-build-windows:
-    name: Test Build Process (Windows)
-    runs-on: windows-latest
+  # Quick build test - using new reusable workflow
+  quick-build-test:
+    name: Quick Build Test
+    uses: ./.github/workflows/reusable-build-v2.yml
+    with:
+      build_type: 'Release'
+      platforms: '["windows", "linux"]'
+      architectures: '["x64"]'
+      artifact_retention_days: 1
+      create_archives: true
+      enable_ccache: true
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # Instead of using reusable workflow, we'll run the build steps directly
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ runner.os }}-ccache-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.c') }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-
-
-      - name: Set vcpkg environment variables
-        run: |
-          echo "VCPKG_KEEP_ENV_VARS=HTTP_PROXY;HTTPS_PROXY;http_proxy;https_proxy" >> $GITHUB_ENV
-          echo "VCPKG_MAX_CONCURRENCY=2" >> $GITHUB_ENV
-
-      - name: Setup vcpkg
-        uses: johnwason/vcpkg-action@v6
-        id: vcpkg
-        with:
-          manifest-dir: ${{ github.workspace }}
-          triplet: x64-windows
-          revision: a34c873a9717a888f58dc05268dea15592c2f0ff
-          token: ${{ github.token }}
-          github-binarycache: true
-          cache-key: vcpkg-${{ runner.os }}-x64-windows-${{ hashFiles('vcpkg.json') }}
-        continue-on-error: true
-
-      - name: Configure CMake
-        shell: pwsh
-        run: |
-          # Get vcpkg paths
-          $vcpkgToolchain = "${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
-          $vcpkgIncludePath = "${{ github.workspace }}/vcpkg_installed/x64-windows/include"
-          $vcpkgLibPath = "${{ github.workspace }}/vcpkg_installed/x64-windows/lib"
-
-          # Configure with detailed output and ccache
-          cmake -B build -S . -A x64 `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DXDELTA_ENABLE_LZMA=ON `
-            -DXDELTA_BUILD_TESTS=OFF `
-            -DCMAKE_INCLUDE_PATH="$vcpkgIncludePath" `
-            -DCMAKE_LIBRARY_PATH="$vcpkgLibPath" `
-            -DLIBLZMA_INCLUDE_DIR="$vcpkgIncludePath" `
-            -DLIBLZMA_LIBRARY="$vcpkgLibPath/liblzma.lib" `
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache `
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
-            -DCMAKE_VERBOSE_MAKEFILE=ON
-
-      - name: Build
-        run: |
-          cmake --build build --config Release --parallel 2
-
-      - name: Test executable
-        shell: pwsh
-        run: |
-          # Test if the executable works
-          $exePath = "build\Release\xdelta3.exe"
-          if (Test-Path $exePath) {
-              Write-Host "Testing executable: $exePath"
-              & $exePath --help
-              if ($LASTEXITCODE -eq 0) {
-                  Write-Host "✅ Executable test passed"
-              } else {
-                  Write-Host "⚠️ Executable test returned non-zero exit code: $LASTEXITCODE"
-              }
-          } else {
-              Write-Host "❌ Executable not found at: $exePath"
-              exit 1
-          }
-
-      - name: Prepare artifacts
-        shell: pwsh
-        run: |
-          # Create artifacts directory for x64
-          $artifactsDir = "artifacts\windows-x64"
-          New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
-
-          # Copy executable
-          $exePath = "build\Release\xdelta3.exe"
-          Copy-Item $exePath -Destination $artifactsDir
-
-          # Create archive
-          $zipPath = "artifacts\windows-x64\xdelta3-windows-x64.zip"
-          Compress-Archive -Path "$artifactsDir\*" -DestinationPath $zipPath -Force
-
-          # Create artifacts directory for x86 (dummy for testing)
-          $artifactsDirX86 = "artifacts\windows-x86"
-          New-Item -ItemType Directory -Path $artifactsDirX86 -Force | Out-Null
-          Copy-Item $exePath -Destination $artifactsDirX86
-          Rename-Item -Path "$artifactsDirX86\xdelta3.exe" -NewName "xdelta3.exe"
-          $zipPathX86 = "artifacts\windows-x86\xdelta3-windows-x86.zip"
-          Compress-Archive -Path "$artifactsDirX86\*" -DestinationPath $zipPathX86 -Force
-
-      - name: Upload Windows x64 artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: xdelta3-windows-x64
-          path: artifacts/windows-x64/
-          retention-days: 1
-
-      - name: Upload Windows x86 artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: xdelta3-windows-x86
-          path: artifacts/windows-x86/
-          retention-days: 1
-
-
-
-  test-build-linux:
-    name: Test Build Process (Linux)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # Instead of using reusable workflow, we'll run the build steps directly
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ runner.os }}-ccache-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.c') }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-
-
-      - name: Set vcpkg environment variables
-        run: |
-          echo "VCPKG_KEEP_ENV_VARS=HTTP_PROXY;HTTPS_PROXY;http_proxy;https_proxy" >> $GITHUB_ENV
-          echo "VCPKG_MAX_CONCURRENCY=2" >> $GITHUB_ENV
-
-      - name: Setup vcpkg
-        uses: johnwason/vcpkg-action@v6
-        id: vcpkg
-        with:
-          manifest-dir: ${{ github.workspace }}
-          triplet: x64-linux
-          revision: a34c873a9717a888f58dc05268dea15592c2f0ff
-          token: ${{ github.token }}
-          github-binarycache: true
-          cache-key: vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('vcpkg.json') }}
-        continue-on-error: true
-
-      - name: Configure CMake
-        run: |
-          # Simple configuration relying on vcpkg integration with ccache
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
-            -DXDELTA_ENABLE_LZMA=ON \
-            -DXDELTA_BUILD_TESTS=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_DISABLE_FIND_PACKAGE_LibLZMA=OFF -DVCPKG_TARGET_TRIPLET=x64-linux
-
-      - name: Build
-        run: |
-          cmake --build build --config Release --parallel 2
-
-      - name: Test executable
-        run: |
-          # Test if the executable works
-          if [ -f "build/xdelta3" ]; then
-            echo "Testing executable: build/xdelta3"
-            ./build/xdelta3 --help
-            if [ $? -eq 0 ]; then
-              echo "✅ Executable test passed"
-            else
-              echo "⚠️ Executable test returned non-zero exit code: $?"
-            fi
-          else
-            echo "❌ Executable not found at: build/xdelta3"
-            exit 1
-          fi
-
-      - name: Prepare artifacts
-        run: |
-          # Create artifacts directory
-          mkdir -p artifacts/linux
-
-          # Copy executables
-          if [ -f "build/xdelta3" ]; then
-            cp build/xdelta3 artifacts/linux/
-            echo "✅ Copied xdelta3 executable to artifacts directory"
-          else
-            echo "⚠️ xdelta3 executable not found at build/xdelta3"
-            # Create a dummy file for testing purposes
-            echo "This is a dummy file for testing" > artifacts/linux/xdelta3
-            chmod +x artifacts/linux/xdelta3
-            echo "Created dummy xdelta3 file for testing"
-          fi
-
-          # List files before creating archive
-          echo "Files in artifacts/linux:"
-          ls -la artifacts/linux/
-
-          # Create archive with explicit file list
-          cd artifacts/linux
-          tar -czf xdelta3-linux.tar.gz xdelta3
-          cd ../..
-
-          # Verify the archive was created
-          if [ -f "artifacts/linux/xdelta3-linux.tar.gz" ]; then
-            echo "✅ Archive created successfully"
-            ls -la artifacts/linux/xdelta3-linux.tar.gz
-          else
-            echo "❌ Failed to create archive"
-            exit 1
-          fi
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: xdelta3-linux
-          path: artifacts/linux/
-          retention-days: 1
-
+  # Package test - depends on quick build test
   test-package:
     name: Test Package Creation
     runs-on: windows-latest
-    needs: [test-build-windows, test-build-linux]
+    needs: [quick-build-test]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download Windows x64 artifacts
         uses: actions/download-artifact@v4
         with:
-          path: downloaded-artifacts
+          name: xdelta3-windows-x64
+          path: downloaded-artifacts/xdelta3-windows-x64
+
+      - name: Download Linux x64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: xdelta3-linux-x64
+          path: downloaded-artifacts/xdelta3-linux-x64
 
       - name: Make scripts executable
         shell: bash

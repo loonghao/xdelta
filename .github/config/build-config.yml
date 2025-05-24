@@ -1,0 +1,77 @@
+# 统一构建配置文件
+# 用于本地和CI环境的一致性配置
+
+# vcpkg配置
+vcpkg:
+  commit: "a34c873a9717a888f58dc05268dea15592c2f0ff"
+  max_concurrency: 2
+  environment_vars:
+    - "HTTP_PROXY"
+    - "HTTPS_PROXY" 
+    - "http_proxy"
+    - "https_proxy"
+
+# 构建配置
+build:
+  default_type: "Release"
+  parallel_jobs: 2
+  cmake_options:
+    common:
+      - "-DXDELTA_ENABLE_LZMA=ON"
+      - "-DXDELTA_BUILD_TESTS=OFF"
+      - "-DCMAKE_VERBOSE_MAKEFILE=ON"
+    windows:
+      - "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
+      - "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+    linux:
+      - "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
+      - "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+      - "-DCMAKE_DISABLE_FIND_PACKAGE_LibLZMA=OFF"
+
+# 平台配置
+platforms:
+  windows:
+    architectures:
+      x64:
+        triplet: "x64-windows"
+        cmake_arch: "-A x64"
+      x86:
+        triplet: "x86-windows"
+        cmake_arch: "-A Win32"
+  linux:
+    architectures:
+      x64:
+        triplet: "x64-linux"
+        cmake_arch: ""
+
+# 缓存配置
+cache:
+  ccache:
+    key_pattern: "{os}-{arch}-ccache-{hash}"
+    restore_keys_pattern: "{os}-{arch}-ccache-"
+  cmake:
+    key_pattern: "{os}-{arch}-cmake-{hash}"
+    restore_keys_pattern: "{os}-{arch}-cmake-"
+    paths:
+      - "build/CMakeCache.txt"
+      - "build/CMakeFiles"
+      - "build/*.cmake"
+  vcpkg:
+    key_pattern: "vcpkg-{os}-{triplet}-{hash}"
+
+# 重试配置
+retry:
+  max_attempts: 3
+  delay_seconds: 30
+
+# 工件配置
+artifacts:
+  retention_days:
+    pr: 1
+    release: 90
+  windows:
+    executable_path: "build/{build_type}/xdelta3.exe"
+    library_path: "build/{build_type}/xdelta.lib"
+  linux:
+    executable_path: "build/xdelta3"
+    library_path: "build/libxdelta.a"

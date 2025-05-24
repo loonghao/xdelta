@@ -89,11 +89,14 @@ jobs:
   build-binaries:
     name: Build Binaries
     needs: get-version
-    uses: ./.github/workflows/reusable-build.yml
+    uses: ./.github/workflows/reusable-build-v2.yml
     with:
       build_type: Release
+      platforms: '["windows", "linux"]'
+      architectures: '["x64", "x86"]'
       create_archives: true
       artifact_retention_days: 90
+      enable_ccache: true
 
   package:
     name: Package for vcpkg
