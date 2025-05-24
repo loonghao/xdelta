@@ -125,7 +125,9 @@ jobs:
           echo "Generated matrix:"
           echo "$matrix" | jq .
 
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+          # Compress JSON to single line for GitHub Actions output
+          matrix_compressed=$(echo "$matrix" | jq -c .)
+          echo "matrix=$matrix_compressed" >> $GITHUB_OUTPUT
 
   build:
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
