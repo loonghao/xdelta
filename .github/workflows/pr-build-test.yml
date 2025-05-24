@@ -103,8 +103,22 @@ jobs:
           echo "📦 Testing vcpkg package creation..."
 
           # Prepare artifacts directory structure for vcpkg packaging
+          echo "Preparing artifact directory structure..."
           mkdir -p "downloaded-artifacts/xdelta3-windows-x64"
-          cp -r "downloaded-artifacts/windows-x64/"* "downloaded-artifacts/xdelta3-windows-x64/"
+
+          # Copy files more safely
+          if [ -d "downloaded-artifacts/windows-x64" ]; then
+            echo "Copying from downloaded-artifacts/windows-x64/ to downloaded-artifacts/xdelta3-windows-x64/"
+            cp -r "downloaded-artifacts/windows-x64/." "downloaded-artifacts/xdelta3-windows-x64/"
+            echo "Files copied successfully"
+            echo "Contents of xdelta3-windows-x64:"
+            ls -la "downloaded-artifacts/xdelta3-windows-x64/"
+          else
+            echo "❌ Source directory downloaded-artifacts/windows-x64 not found"
+            echo "Available directories:"
+            find downloaded-artifacts -type d | sort
+            exit 1
+          fi
 
           .github/scripts/unified-packaging.sh \
             --type vcpkg \
