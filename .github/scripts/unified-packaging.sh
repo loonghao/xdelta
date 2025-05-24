@@ -708,6 +708,7 @@ copy_vcpkg_artifacts() {
         local artifact_sources=(
             "$ARTIFACTS_DIR/xdelta3-windows-$arch"  # From reusable build workflow
             "$ARTIFACTS_DIR/windows-$arch"          # Alternative naming
+            "$ARTIFACTS_DIR/$VERSION/$arch-windows" # Existing vcpkg structure
         )
 
         for source in "${artifact_sources[@]}"; do
@@ -739,6 +740,7 @@ copy_vcpkg_artifacts() {
         local artifact_sources=(
             "$ARTIFACTS_DIR/xdelta3-windows-$arch"  # From reusable build workflow
             "$ARTIFACTS_DIR/windows-$arch"          # Alternative naming
+            "$ARTIFACTS_DIR/$VERSION/$arch-windows" # Existing vcpkg structure
         )
 
         local dest_dir="$package_dir/$VERSION/$arch-windows"
@@ -754,32 +756,59 @@ copy_vcpkg_artifacts() {
         done
 
         if [[ -n "$artifact_source" && -d "$artifact_source" ]]; then
-            # Copy executable
-            if [[ -f "$artifact_source/xdelta3.exe" ]]; then
-                cp "$artifact_source/xdelta3.exe" "$dest_dir/bin/"
-                log_success "Copied $arch executable to bin/"
+            # Check if this is an existing vcpkg structure that we can copy directly
+            if [[ "$artifact_source" == "$ARTIFACTS_DIR/$VERSION/$arch-windows" ]]; then
+                log_info "Found existing vcpkg structure, copying directly"
+
+                # Copy the entire structure
+                if [[ -d "$artifact_source/bin" ]]; then
+                    cp -r "$artifact_source/bin"/* "$dest_dir/bin/" 2>/dev/null || true
+                    log_success "Copied $arch bin directory"
+                fi
+
+                if [[ -d "$artifact_source/lib" ]]; then
+                    cp -r "$artifact_source/lib"/* "$dest_dir/lib/" 2>/dev/null || true
+                    log_success "Copied $arch lib directory"
+                fi
+
+                if [[ -d "$artifact_source/include" ]]; then
+                    cp -r "$artifact_source/include"/* "$dest_dir/include/" 2>/dev/null || true
+                    log_success "Copied $arch include directory"
+                fi
             else
-                log_warning "xdelta3.exe not found in $artifact_source"
-            fi
+                # Handle flat artifact structure
+                # Copy executable
+                if [[ -f "$artifact_source/xdelta3.exe" ]]; then
+                    cp "$artifact_source/xdelta3.exe" "$dest_dir/bin/"
+                    log_success "Copied $arch executable to bin/"
+                else
+                    log_warning "xdelta3.exe not found in $artifact_source"
+                fi
 
-            # Copy library files
-            if [[ -f "$artifact_source/xdelta.lib" ]]; then
-                cp "$artifact_source/xdelta.lib" "$dest_dir/lib/"
-                log_success "Copied $arch library to lib/"
-            else
-                log_warning "xdelta.lib not found in $artifact_source"
-            fi
+                # Copy library files
+                if [[ -f "$artifact_source/xdelta.lib" ]]; then
+                    cp "$artifact_source/xdelta.lib" "$dest_dir/lib/"
+                    log_success "Copied $arch library to lib/"
+                else
+                    log_warning "xdelta.lib not found in $artifact_source"
+                fi
 
-            # Copy DLLs
-            local dll_count=0
-            while IFS= read -r -d '' dll; do
-                cp "$dll" "$dest_dir/bin/"
-                log_success "Copied DLL: $(basename "$dll")"
-                ((dll_count++))
-            done < <(find "$artifact_source" -name "*.dll" -print0 2>/dev/null)
+                # Copy DLLs
+                local dll_count=0
+                # Temporarily disable exit on error for DLL copying
+                set +e
+                while IFS= read -r -d '' dll; do
+                    if cp "$dll" "$dest_dir/bin/" 2>/dev/null; then
+                        log_success "Copied DLL: $(basename "$dll")"
+                        ((dll_count++))
+                    fi
+                done < <(find "$artifact_source" -name "*.dll" -print0 2>/dev/null)
+                # Re-enable exit on error
+                set -e
 
-            if [[ $dll_count -eq 0 ]]; then
-                log_info "No DLL files found in $artifact_source"
+                if [[ $dll_count -eq 0 ]]; then
+                    log_info "No DLL files found in $artifact_source"
+                fi
             fi
         else
             log_error "Failed to find artifact source for $arch (this should not happen)"
@@ -788,7 +817,11 @@ copy_vcpkg_artifacts() {
     done
 
     # Copy header files to all architecture directories (including missing ones)
-    copy_header_files "$package_dir/$VERSION" "${available_archs[@]}"
+    if copy_header_files "$package_dir/$VERSION" "${available_archs[@]}"; then
+        log_info "Header files copied successfully"
+    else
+        log_warning "Header file copying had issues, but continuing"
+    fi
 }
 
 # Copy header files for vcpkg
@@ -806,6 +839,9 @@ copy_header_files() {
 
     log_info "Copying headers for architectures: ${available_archs[*]}"
 
+    # Temporarily disable exit on error for header copying
+    set +e
+
     # Look for header files in the source tree
     local header_files=("xdelta3.h" "xdelta3-decode.h" "xdelta3-list.h" "xdelta3-main.h" "xdelta3-second.h" "xdelta3-test.h")
 
@@ -819,8 +855,13 @@ copy_header_files() {
                 for arch in "${available_archs[@]}"; do
                     local arch_include_dir="$version_dir/$arch-windows/include/xdelta3"
                     if [[ -d "$arch_include_dir" ]]; then
-                        cp "$path" "$arch_include_dir/"
-                        log_success "Copied $header to $arch-windows"
+                        if cp "$path" "$arch_include_dir/" 2>/dev/null; then
+                            log_success "Copied $header to $arch-windows"
+                        else
+                            log_warning "Failed to copy $header to $arch-windows"
+                        fi
+                    else
+                        log_warning "Include directory does not exist: $arch_include_dir"
                     fi
                 done
                 break
@@ -841,6 +882,9 @@ copy_header_files() {
             log_success "Created minimal xdelta3.h for $arch-windows"
         fi
     done
+
+    # Re-enable exit on error
+    set -e
 }
 
 # Create Windows README
@@ -971,32 +1015,104 @@ create_archive_zip() {
 
     log_info "Creating ZIP archive: $archive_path"
 
+    # Validate input parameters
+    if [[ ! -d "$source_dir" ]]; then
+        log_error "Source directory does not exist: $source_dir"
+        return 1
+    fi
+
     # Remove existing archive
     [[ -f "$archive_path" ]] && rm "$archive_path"
 
     # Convert paths to absolute paths to avoid issues
-    local abs_source_dir=$(realpath "$source_dir" 2>/dev/null || echo "$source_dir")
-    local abs_archive_path=$(realpath "$archive_path" 2>/dev/null || echo "$archive_path")
+    local abs_source_dir
+    local abs_archive_path
+
+    # Try to get absolute path, fallback to original if realpath fails
+    if abs_source_dir=$(realpath "$source_dir" 2>/dev/null); then
+        log_info "Resolved source directory: $abs_source_dir"
+    else
+        abs_source_dir="$source_dir"
+        log_warning "Could not resolve absolute path for source, using: $abs_source_dir"
+    fi
+
+    # For archive path, we need to ensure the parent directory exists
+    local archive_dir=$(dirname "$archive_path")
+    if [[ ! -d "$archive_dir" ]]; then
+        mkdir -p "$archive_dir" || {
+            log_error "Failed to create archive directory: $archive_dir"
+            return 1
+        }
+    fi
+
+    if abs_archive_path=$(realpath "$archive_path" 2>/dev/null); then
+        log_info "Resolved archive path: $abs_archive_path"
+    else
+        abs_archive_path="$archive_path"
+        log_warning "Could not resolve absolute path for archive, using: $abs_archive_path"
+    fi
 
     log_info "Source directory: $abs_source_dir"
     log_info "Archive path: $abs_archive_path"
 
     # Create archive using different methods based on availability
     if command -v powershell.exe &> /dev/null; then
-        # Use PowerShell on Windows - convert to Windows paths
-        local win_source_dir=$(cygpath -w "$abs_source_dir" 2>/dev/null || echo "$abs_source_dir")
-        local win_archive_path=$(cygpath -w "$abs_archive_path" 2>/dev/null || echo "$abs_archive_path")
+        log_info "Using PowerShell for ZIP creation"
+
+        # Convert to Windows paths if possible
+        local win_source_dir="$abs_source_dir"
+        local win_archive_path="$abs_archive_path"
+
+        if command -v cygpath &> /dev/null; then
+            if win_source_dir=$(cygpath -w "$abs_source_dir" 2>/dev/null); then
+                log_info "Converted source to Windows path: $win_source_dir"
+            else
+                log_warning "Failed to convert source path, using: $abs_source_dir"
+                win_source_dir="$abs_source_dir"
+            fi
+
+            if win_archive_path=$(cygpath -w "$abs_archive_path" 2>/dev/null); then
+                log_info "Converted archive to Windows path: $win_archive_path"
+            else
+                log_warning "Failed to convert archive path, using: $abs_archive_path"
+                win_archive_path="$abs_archive_path"
+            fi
+        else
+            log_warning "cygpath not available, using Unix paths with PowerShell"
+        fi
 
         log_info "PowerShell paths - Source: $win_source_dir, Archive: $win_archive_path"
 
-        # Use PowerShell with proper error handling
-        if powershell.exe -Command "try { Compress-Archive -Path '$win_source_dir' -DestinationPath '$win_archive_path' -Force; exit 0 } catch { Write-Error \$_.Exception.Message; exit 1 }"; then
+        # Use PowerShell with improved error handling and .NET compression
+        local ps_command="try {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            if (Test-Path '$win_archive_path') { Remove-Item '$win_archive_path' -Force }
+            [System.IO.Compression.ZipFile]::CreateFromDirectory('$win_source_dir', '$win_archive_path')
+            if (Test-Path '$win_archive_path') {
+                Write-Host 'Archive created successfully'
+                exit 0
+            } else {
+                Write-Error 'Archive was not created'
+                exit 1
+            }
+        } catch {
+            Write-Error \"PowerShell archive creation failed: \$(\$_.Exception.Message)\"
+            exit 1
+        }"
+
+        if powershell.exe -Command "$ps_command"; then
             log_success "PowerShell archive creation succeeded"
         else
             log_error "PowerShell archive creation failed, trying fallback method"
             # Fallback to zip command if available
             if command -v zip &> /dev/null; then
-                (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")")
+                log_info "Using zip command as fallback"
+                if (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")"); then
+                    log_success "Zip command fallback succeeded"
+                else
+                    log_error "Zip command fallback also failed"
+                    return 1
+                fi
             else
                 log_error "No fallback ZIP creation tool available"
                 return 1
@@ -1005,16 +1121,24 @@ create_archive_zip() {
     elif command -v zip &> /dev/null; then
         # Use zip command
         log_info "Using zip command"
-        (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")")
+        if (cd "$(dirname "$abs_source_dir")" && zip -r "$abs_archive_path" "$(basename "$abs_source_dir")"); then
+            log_success "Zip command succeeded"
+        else
+            log_error "Zip command failed"
+            return 1
+        fi
     else
-        log_error "No ZIP creation tool available"
+        log_error "No ZIP creation tool available (neither PowerShell nor zip command)"
         return 1
     fi
 
+    # Verify the archive was created
     if [[ -f "$abs_archive_path" ]]; then
-        log_success "Created ZIP archive: $abs_archive_path"
+        local archive_size=$(stat -f%z "$abs_archive_path" 2>/dev/null || stat -c%s "$abs_archive_path" 2>/dev/null || echo "unknown")
+        log_success "Created ZIP archive: $abs_archive_path (size: $archive_size bytes)"
+        return 0
     else
-        log_error "Failed to create ZIP archive"
+        log_error "Failed to create ZIP archive: $abs_archive_path"
         return 1
     fi
 }
