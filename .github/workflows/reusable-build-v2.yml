@@ -1,0 +1,227 @@
+name: Reusable Build Workflow v2
+
+on:
+  workflow_call:
+    inputs:
+      build_type:
+        description: 'Build type (Debug, Release, etc.)'
+        required: false
+        default: 'Release'
+        type: string
+      platforms:
+        description: 'Platforms to build (json array: ["windows", "linux"])'
+        required: false
+        default: '["windows", "linux"]'
+        type: string
+      architectures:
+        description: 'Architectures to build (json array: ["x64", "x86"])'
+        required: false
+        default: '["x64"]'
+        type: string
+      vcpkg_commit:
+        description: 'vcpkg commit hash to use'
+        required: false
+        default: 'a34c873a9717a888f58dc05268dea15592c2f0ff'
+        type: string
+      artifact_retention_days:
+        description: 'Number of days to retain artifacts'
+        required: false
+        default: 90
+        type: number
+      create_archives:
+        description: 'Whether to create zip/tar.gz archives for artifacts'
+        required: false
+        default: false
+        type: boolean
+      enable_ccache:
+        description: 'Enable ccache for faster builds'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  setup:
+    name: Setup Build Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.setup-matrix.outputs.matrix }}
+    
+    steps:
+      - name: Setup build matrix
+        id: setup-matrix
+        run: |
+          # 解析输入参数并生成构建矩阵
+          platforms='${{ inputs.platforms }}'
+          architectures='${{ inputs.architectures }}'
+          
+          echo "Platforms: $platforms"
+          echo "Architectures: $architectures"
+          
+          # 生成构建矩阵
+          matrix=$(cat << EOF
+          {
+            "include": [
+          EOF
+          )
+          
+          # 添加Windows构建配置
+          if echo "$platforms" | grep -q "windows"; then
+            for arch in $(echo "$architectures" | jq -r '.[]'); do
+              if [[ "$arch" == "x64" ]]; then
+                triplet="x64-windows"
+                cmake_arch="-A x64"
+                runner="windows-latest"
+              elif [[ "$arch" == "x86" ]]; then
+                triplet="x86-windows"
+                cmake_arch="-A Win32"
+                runner="windows-latest"
+              else
+                continue
+              fi
+              
+              matrix+=$(cat << EOF
+              {
+                "os": "windows",
+                "arch": "$arch",
+                "triplet": "$triplet",
+                "cmake_arch": "$cmake_arch",
+                "runner": "$runner",
+                "shell": "pwsh"
+              },
+          EOF
+              )
+            done
+          fi
+          
+          # 添加Linux构建配置
+          if echo "$platforms" | grep -q "linux"; then
+            for arch in $(echo "$architectures" | jq -r '.[]'); do
+              if [[ "$arch" == "x64" ]]; then
+                triplet="x64-linux"
+                cmake_arch=""
+                runner="ubuntu-latest"
+              else
+                continue
+              fi
+              
+              matrix+=$(cat << EOF
+              {
+                "os": "linux",
+                "arch": "$arch", 
+                "triplet": "$triplet",
+                "cmake_arch": "$cmake_arch",
+                "runner": "$runner",
+                "shell": "bash"
+              },
+          EOF
+              )
+            done
+          fi
+          
+          # 移除最后的逗号并关闭JSON
+          matrix=$(echo "$matrix" | sed '$ s/,$//')
+          matrix+=$(cat << EOF
+            ]
+          }
+          EOF
+          )
+          
+          echo "Generated matrix:"
+          echo "$matrix" | jq .
+          
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    needs: setup
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Make scripts executable
+        shell: bash
+        run: |
+          if [ -f ".github/scripts/make-scripts-executable.sh" ]; then
+            chmod +x .github/scripts/make-scripts-executable.sh
+            .github/scripts/make-scripts-executable.sh
+          else
+            echo "Script not found, making scripts executable manually"
+            find .github/scripts -name "*.sh" -type f -exec chmod +x {} \;
+            find .github/scripts -name "*.ps1" -type f -exec chmod +x {} \; 2>/dev/null || true
+          fi
+
+      - name: Setup ccache
+        if: ${{ inputs.enable_ccache }}
+        uses: hendrikmuhs/ccache-action@v1.2.17
+        with:
+          key: ${{ matrix.runner }}-${{ matrix.arch }}-ccache-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.c') }}
+          restore-keys: |
+            ${{ matrix.runner }}-${{ matrix.arch }}-ccache-
+
+      - name: Cache CMake build directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/CMakeCache.txt
+            build/CMakeFiles
+            build/*.cmake
+          key: ${{ matrix.runner }}-${{ matrix.arch }}-cmake-${{ hashFiles('CMakeLists.txt', 'vcpkg.json') }}
+          restore-keys: |
+            ${{ matrix.runner }}-${{ matrix.arch }}-cmake-
+
+      - name: Setup vcpkg
+        uses: johnwason/vcpkg-action@v6
+        id: vcpkg
+        with:
+          manifest-dir: ${{ github.workspace }}
+          triplet: ${{ matrix.triplet }}
+          revision: ${{ inputs.vcpkg_commit }}
+          token: ${{ github.token }}
+          github-binarycache: true
+          cache-key: vcpkg-${{ matrix.runner }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
+        continue-on-error: true
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          .github/scripts/build-windows.ps1 `
+            -BuildType "${{ inputs.build_type }}" `
+            -Arch "${{ matrix.arch }}" `
+            -ParallelJobs 2 `
+            -EnableCcache $${{ inputs.enable_ccache }} `
+            -VcpkgCommit "${{ inputs.vcpkg_commit }}"
+
+      - name: Build (Linux)
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          .github/scripts/build-linux.sh \
+            --build-type "${{ inputs.build_type }}" \
+            --arch "${{ matrix.arch }}" \
+            --jobs 2 \
+            --vcpkg-commit "${{ inputs.vcpkg_commit }}" \
+            ${{ inputs.enable_ccache == false && '--no-ccache' || '' }}
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          .github/scripts/prepare-artifacts.sh \
+            --os "${{ matrix.os }}" \
+            --arch "${{ matrix.arch }}" \
+            --build-type "${{ inputs.build_type }}" \
+            ${{ inputs.create_archives && '--create-archives' || '' }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xdelta3-${{ matrix.os }}-${{ matrix.arch }}
+          path: artifacts/${{ matrix.os }}-${{ matrix.arch }}/
+          retention-days: ${{ inputs.artifact_retention_days }}
