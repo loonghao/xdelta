@@ -290,7 +290,8 @@ main() {
 package_binary() {
     log_info "📦 Creating binary package for $OS-$ARCH"
 
-    local package_name="xdelta3-$OS-$ARCH"
+    # Use simple OS-ARCH format for compatibility with workflow expectations
+    local package_name="$OS-$ARCH"
     local package_dir="$OUTPUT_DIR/$package_name"
 
     # For binary packaging, check if we're working with build directory or artifacts directory
@@ -321,7 +322,7 @@ package_binary() {
             fi
             create_readme_windows "$package_dir"
             if [[ "$CREATE_ARCHIVES" == "true" ]]; then
-                create_archive_zip "$package_dir" "$OUTPUT_DIR/$package_name.zip"
+                create_archive_zip "$package_dir" "$OUTPUT_DIR/xdelta3-$package_name.zip"
             fi
             ;;
         linux)
@@ -332,7 +333,7 @@ package_binary() {
             fi
             create_readme_linux "$package_dir"
             if [[ "$CREATE_ARCHIVES" == "true" ]]; then
-                create_archive_tar "$package_dir" "$OUTPUT_DIR/$package_name.tar.gz"
+                create_archive_tar "$package_dir" "$OUTPUT_DIR/xdelta3-$package_name.tar.gz"
             fi
             ;;
         *)
@@ -376,7 +377,7 @@ package_test() {
 
     local package_name="xdelta3-$OS-$ARCH-test"
     local package_dir="$OUTPUT_DIR/$package_name"
-    local artifact_source="$ARTIFACTS_DIR/xdelta3-$OS-$ARCH"
+    local artifact_source="$ARTIFACTS_DIR/$OS-$ARCH"
 
     # Create minimal package directory
     mkdir -p "$package_dir"
@@ -533,7 +534,7 @@ copy_vcpkg_artifacts() {
 
     # Copy artifacts for each architecture
     for arch in x64 x86; do
-        local artifact_source="$ARTIFACTS_DIR/xdelta3-windows-$arch"
+        local artifact_source="$ARTIFACTS_DIR/windows-$arch"
         local dest_dir="$package_dir/$VERSION/$arch-windows"
 
         if [[ -d "$artifact_source" ]]; then

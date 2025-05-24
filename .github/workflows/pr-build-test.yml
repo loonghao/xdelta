@@ -43,13 +43,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: xdelta3-windows-x64
-          path: downloaded-artifacts/xdelta3-windows-x64
+          path: downloaded-artifacts/windows-x64
 
       - name: Download Linux x64 artifacts
         uses: actions/download-artifact@v4
         with:
           name: xdelta3-linux-x64
-          path: downloaded-artifacts/xdelta3-linux-x64
+          path: downloaded-artifacts/linux-x64
 
       - name: Make scripts executable
         shell: bash
@@ -192,14 +192,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: xdelta3-windows-x64
-          path: downloaded-artifacts/xdelta3-windows-x64
+          path: downloaded-artifacts/windows-x64
 
       - name: Generate SHA512 hash from package
         id: sha512
         run: |
           # Generate SHA512 hash from the downloaded package
-          if [ -f "downloaded-artifacts/xdelta3-windows-x64/xdelta3-windows-x64.zip" ]; then
-            PACKAGE_SHA512=$(sha512sum "downloaded-artifacts/xdelta3-windows-x64/xdelta3-windows-x64.zip" | awk '{print $1}')
+          if [ -f "downloaded-artifacts/windows-x64/xdelta3-windows-x64.zip" ]; then
+            PACKAGE_SHA512=$(sha512sum "downloaded-artifacts/windows-x64/xdelta3-windows-x64.zip" | awk '{print $1}')
             echo "Using SHA512 from package: $PACKAGE_SHA512"
           else
             # Generate a dummy SHA512 hash for testing
