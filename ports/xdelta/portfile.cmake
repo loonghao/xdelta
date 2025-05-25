@@ -5,7 +5,7 @@ vcpkg_download_distfile(
     ARCHIVE
     URLS "https://github.com/loonghao/xdelta/releases/download/v${VERSION}/xdelta-${VERSION}-windows.zip"
     FILENAME "xdelta-${VERSION}-windows.zip"
-    SHA512 "02c828259fe26a6b8a5ec7e9bc253991f03293cd5f9effe20d78e87dd6a18cd7a7b7a79df88e00c26948b130d95d71452c011b5d8e8cd462f3ef79946235daf9"
+    SHA512 "cff1fb679f9dbe0d38c1eee2e28b3d3be7b688bf18a71b8855c934773ba1113a8085a8bc7b25d8b794f0f371faa749b9c47deb34b9396f4f638ed1492997e026"
 )
 
 # Extract the archive
@@ -17,9 +17,9 @@ vcpkg_extract_source_archive(
 
 # Install binaries
 if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
-    set(ARCH_DIR "${SOURCE_PATH}/${VERSION}/x64-windows")
+    set(ARCH_DIR "${SOURCE_PATH}/xdelta-${VERSION}-windows/${VERSION}/x64-windows")
 elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86")
-    set(ARCH_DIR "${SOURCE_PATH}/${VERSION}/x86-windows")
+    set(ARCH_DIR "${SOURCE_PATH}/xdelta-${VERSION}-windows/${VERSION}/x86-windows")
 else()
     message(FATAL_ERROR "Unsupported architecture: ${VCPKG_TARGET_ARCHITECTURE}")
 endif()
