@@ -17,9 +17,9 @@ vcpkg_extract_source_archive(
 
 # Install binaries
 if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
-    set(ARCH_DIR "${SOURCE_PATH}/${VERSION}/x64-windows")
+    set(ARCH_DIR "${SOURCE_PATH}/xdelta-${VERSION}-windows/${VERSION}/x64-windows")
 elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86")
-    set(ARCH_DIR "${SOURCE_PATH}/${VERSION}/x86-windows")
+    set(ARCH_DIR "${SOURCE_PATH}/xdelta-${VERSION}-windows/${VERSION}/x86-windows")
 else()
     message(FATAL_ERROR "Unsupported architecture: ${VCPKG_TARGET_ARCHITECTURE}")
 endif()
